@@ -138,7 +138,12 @@ export async function POST(request: NextRequest) {
 
     // Calculate total amount
     let totalAmount = 0
-    const items = []
+    const items: Array<{
+      feedId: string
+      quantity: number
+      unitPrice: number
+      totalPrice: number
+    }> = []
 
     for (const item of validatedData.items) {
       const feed = await prisma.feed.findUnique({
