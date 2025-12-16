@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import ToastProvider from '@/components/Toast'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 
 export const metadata: Metadata = {
   title: 'Gurudatta trader\'s - Admin Panel',
@@ -16,6 +17,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <ToastProvider>{children}</ToastProvider>
+        <SpeedInsights />
       </body>
     </html>
   )
