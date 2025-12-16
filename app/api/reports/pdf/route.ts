@@ -118,7 +118,7 @@ export async function GET(request: NextRequest) {
     doc.setLineWidth(0.2)
     
     doc.setFontSize(24)
-    doc.setFont(undefined, 'bold')
+    doc.setFont('helvetica', 'bold')
     doc.setTextColor(255, 255, 255)
     addText('Gurudatta trader\'s', pageWidth / 2, 20, { align: 'center' })
     
@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
     doc.setTextColor(50, 50, 50)
     
     doc.setFontSize(10)
-    doc.setFont(undefined, 'normal')
+    doc.setFont('helvetica', 'normal')
     const reportTypeText = type === 'today' ? 'Today' : type === 'monthly' ? 'This Month' : 'This Year'
     addText('Report Type: ' + reportTypeText, margin + 3, yPos + 7)
     yPos += lineHeight + 2
@@ -177,7 +177,7 @@ export async function GET(request: NextRequest) {
     doc.setLineWidth(0.5)
     doc.rect(margin, yPos, boxWidth, boxHeight, 'S')
     doc.setFontSize(9)
-    doc.setFont(undefined, 'bold')
+    doc.setFont('helvetica', 'bold')
     doc.setTextColor(50, 50, 50)
     addText('Total Sales', margin + 5, yPos + 8)
     doc.setFontSize(14)
@@ -191,7 +191,7 @@ export async function GET(request: NextRequest) {
     doc.setLineWidth(0.5)
     doc.rect(margin + boxWidth + boxSpacing, yPos, boxWidth, boxHeight, 'S')
     doc.setFontSize(9)
-    doc.setFont(undefined, 'bold')
+    doc.setFont('helvetica', 'bold')
     doc.setTextColor(50, 50, 50)
     addText('Total Paid', margin + boxWidth + boxSpacing + 5, yPos + 8)
     doc.setFontSize(14)
@@ -208,7 +208,7 @@ export async function GET(request: NextRequest) {
     doc.setLineWidth(0.5)
     doc.rect(margin, yPos, boxWidth, boxHeight, 'S')
     doc.setFontSize(9)
-    doc.setFont(undefined, 'bold')
+    doc.setFont('helvetica', 'bold')
     doc.setTextColor(50, 50, 50)
     addText('Total Pending', margin + 5, yPos + 8)
     doc.setFontSize(14)
@@ -222,11 +222,11 @@ export async function GET(request: NextRequest) {
     doc.setLineWidth(0.5)
     doc.rect(margin + boxWidth + boxSpacing, yPos, boxWidth, boxHeight, 'S')
     doc.setFontSize(9)
-    doc.setFont(undefined, 'bold')
+    doc.setFont('helvetica', 'bold')
     doc.setTextColor(50, 50, 50)
     addText('Payment Status', margin + boxWidth + boxSpacing + 5, yPos + 8)
     doc.setFontSize(8)
-    doc.setFont(undefined, 'normal')
+    doc.setFont('helvetica', 'normal')
     doc.setTextColor(0, 128, 0) // Green
     addText(`Paid: ${paidBills}`, margin + boxWidth + boxSpacing + 5, yPos + 15)
     doc.setTextColor(255, 140, 0) // Orange
@@ -238,7 +238,7 @@ export async function GET(request: NextRequest) {
 
     // Bills List Summary Table
     doc.setFontSize(12)
-    doc.setFont(undefined, 'bold')
+    doc.setFont('helvetica', 'bold')
     addText('Bills Overview', margin, yPos)
     yPos += lineHeight + 5
 
@@ -246,7 +246,7 @@ export async function GET(request: NextRequest) {
     doc.setFillColor(70, 130, 180) // Steel blue
     doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
     doc.setFontSize(9)
-    doc.setFont(undefined, 'bold')
+    doc.setFont('helvetica', 'bold')
     doc.setTextColor(255, 255, 255)
     addText('Bill Number', margin + 3, yPos + 5.5)
     addText('Customer', margin + 50, yPos + 5.5)
@@ -257,7 +257,7 @@ export async function GET(request: NextRequest) {
 
     // Table Rows
     doc.setFontSize(8)
-    doc.setFont(undefined, 'normal')
+    doc.setFont('helvetica', 'normal')
     doc.setTextColor(0, 0, 0)
     
     for (let i = 0; i < Math.min(bills.length, 15); i++) { // Show first 15 bills on summary page
@@ -269,7 +269,7 @@ export async function GET(request: NextRequest) {
         doc.setFillColor(0, 0, 0)
         doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
         doc.setFontSize(9)
-        doc.setFont(undefined, 'bold')
+        doc.setFont('helvetica', 'bold')
         doc.setTextColor(255, 255, 255)
         addText('Bill Number', margin + 3, yPos + 5.5)
         addText('Customer', margin + 50, yPos + 5.5)
@@ -278,7 +278,7 @@ export async function GET(request: NextRequest) {
         addText('Status', margin + 180, yPos + 5.5)
         yPos += 10
         doc.setFontSize(8)
-        doc.setFont(undefined, 'normal')
+        doc.setFont('helvetica', 'normal')
         doc.setTextColor(0, 0, 0)
       }
 
@@ -307,7 +307,7 @@ export async function GET(request: NextRequest) {
     if (bills.length > 15) {
       yPos += 5
       doc.setFontSize(9)
-      doc.setFont(undefined, 'italic')
+      doc.setFont('helvetica', 'italic')
       addText(`... and ${bills.length - 15} more bills (see detailed pages)`, margin, yPos)
     }
 
@@ -335,7 +335,7 @@ export async function GET(request: NextRequest) {
       doc.line(0, 40, pageWidth, 40)
       
       doc.setFontSize(20)
-      doc.setFont(undefined, 'bold')
+      doc.setFont('helvetica', 'bold')
       doc.setTextColor(255, 255, 255)
       addText('Gurudatta trader\'s', pageWidth / 2, 22, { align: 'center' })
       doc.setFontSize(12)
@@ -352,11 +352,11 @@ export async function GET(request: NextRequest) {
       doc.rect(margin, yPos, pageWidth - margin * 2, billInfoHeight, 'S')
       
       doc.setFontSize(12)
-      doc.setFont(undefined, 'bold')
+      doc.setFont('helvetica', 'bold')
       doc.setTextColor(50, 50, 50)
       addText(`Bill Number: ${bill.billNumber}`, margin + 5, yPos + 8)
       doc.setFontSize(10)
-      doc.setFont(undefined, 'normal')
+      doc.setFont('helvetica', 'normal')
       const billDate = new Date(bill.createdAt).toLocaleDateString('en-IN', { 
         year: 'numeric', 
         month: 'long', 
@@ -368,13 +368,13 @@ export async function GET(request: NextRequest) {
       // Customer Information Box - Light green tint (dynamic height)
       const customerInfoStartY = yPos
       doc.setFontSize(11)
-      doc.setFont(undefined, 'bold')
+      doc.setFont('helvetica', 'bold')
       doc.setTextColor(0, 0, 0)
       const customerHeaderHeight = 8
       let customerContentHeight = customerHeaderHeight + 3
       
       doc.setFontSize(10)
-      doc.setFont(undefined, 'normal')
+      doc.setFont('helvetica', 'normal')
       customerContentHeight += 6 // Name
       customerContentHeight += 6 // Mobile
       if (bill.user.address) {
@@ -392,12 +392,12 @@ export async function GET(request: NextRequest) {
       
       yPos = customerInfoStartY + 3
       doc.setFontSize(11)
-      doc.setFont(undefined, 'bold')
+      doc.setFont('helvetica', 'bold')
       addText('Customer Information', margin + 5, yPos + 5)
       yPos += customerHeaderHeight + 2
       
       doc.setFontSize(10)
-      doc.setFont(undefined, 'normal')
+      doc.setFont('helvetica', 'normal')
       addText(`Name: ${bill.user.name}`, margin + 5, yPos)
       yPos += 6
       addText(`Mobile: ${bill.user.mobileNo}`, margin + 5, yPos)
@@ -411,7 +411,7 @@ export async function GET(request: NextRequest) {
 
       // Items Table Header
       doc.setFontSize(11)
-      doc.setFont(undefined, 'bold')
+      doc.setFont('helvetica', 'bold')
       doc.setTextColor(0, 0, 0)
       addText('Items', margin, yPos)
       yPos += 8 // More spacing before table
@@ -429,7 +429,7 @@ export async function GET(request: NextRequest) {
       doc.rect(margin, yPos, tableWidth, 8, 'F')
       
       doc.setFontSize(9)
-      doc.setFont(undefined, 'bold')
+      doc.setFont('helvetica', 'bold')
       doc.setTextColor(255, 255, 255)
       addText('Feed Name', col1X, yPos + 5.5)
       addText('Weight', col2X, yPos + 5.5)
@@ -442,7 +442,7 @@ export async function GET(request: NextRequest) {
 
       // Table Rows
       doc.setFontSize(9)
-      doc.setFont(undefined, 'normal')
+      doc.setFont('helvetica', 'normal')
       doc.setTextColor(0, 0, 0)
       
       for (let itemIndex = 0; itemIndex < bill.items.length; itemIndex++) {
@@ -454,7 +454,7 @@ export async function GET(request: NextRequest) {
           doc.setFillColor(70, 130, 180) // Steel blue
           doc.rect(margin, yPos, tableWidth, 8, 'F')
           doc.setFontSize(9)
-          doc.setFont(undefined, 'bold')
+          doc.setFont('helvetica', 'bold')
           doc.setTextColor(255, 255, 255)
           addText('Feed Name', col1X, yPos + 5.5)
           addText('Weight', col2X, yPos + 5.5)
@@ -464,7 +464,7 @@ export async function GET(request: NextRequest) {
           yPos += 8
           drawLine(margin, yPos, pageWidth - margin, yPos, [0, 0, 0])
           doc.setFontSize(9)
-          doc.setFont(undefined, 'normal')
+          doc.setFont('helvetica', 'normal')
           doc.setTextColor(0, 0, 0)
         }
 
@@ -513,37 +513,37 @@ export async function GET(request: NextRequest) {
       doc.rect(summaryX, yPos, summaryWidth, summaryBoxHeight, 'S')
 
       doc.setFontSize(11)
-      doc.setFont(undefined, 'bold')
+      doc.setFont('helvetica', 'bold')
       doc.setTextColor(50, 50, 50)
       addText('Summary', summaryX + 5, yPos + 8)
       yPos += 12
 
       doc.setFontSize(9)
-      doc.setFont(undefined, 'normal')
+      doc.setFont('helvetica', 'normal')
       doc.setTextColor(50, 50, 50)
       addText('Total Amount:', summaryX + 5, yPos)
-      doc.setFont(undefined, 'bold')
+      doc.setFont('helvetica', 'bold')
       doc.setFontSize(9)
       doc.setTextColor(0, 0, 0)
       const totalAmt = parseFloat(bill.totalAmount.toString()).toFixed(2)
       addText(formatPrice(parseFloat(totalAmt)), summaryX + summaryWidth - 5, yPos, { align: 'right' })
       yPos += 8
 
-      doc.setFont(undefined, 'normal')
+      doc.setFont('helvetica', 'normal')
       doc.setFontSize(9)
       doc.setTextColor(50, 50, 50)
       addText('Paid Amount:', summaryX + 5, yPos)
-      doc.setFont(undefined, 'bold')
+      doc.setFont('helvetica', 'bold')
       doc.setTextColor(0, 128, 0) // Green for paid
       const paidAmt = parseFloat(bill.paidAmount.toString()).toFixed(2)
       addText(formatPrice(parseFloat(paidAmt)), summaryX + summaryWidth - 5, yPos, { align: 'right' })
       yPos += 8
 
-      doc.setFont(undefined, 'normal')
+      doc.setFont('helvetica', 'normal')
       doc.setFontSize(9)
       doc.setTextColor(50, 50, 50)
       addText('Pending:', summaryX + 5, yPos)
-      doc.setFont(undefined, 'bold')
+      doc.setFont('helvetica', 'bold')
       doc.setTextColor(255, 140, 0) // Orange for pending
       const pendingAmt = parseFloat(bill.pendingAmount.toString()).toFixed(2)
       addText(formatPrice(parseFloat(pendingAmt)), summaryX + summaryWidth - 5, yPos, { align: 'right' })
@@ -571,14 +571,14 @@ export async function GET(request: NextRequest) {
       doc.roundedRect(badgeX, yPos, badgeWidth, 7, 2, 2, 'S')
       doc.setTextColor(statusColor[0], statusColor[1], statusColor[2])
       doc.setFontSize(8)
-      doc.setFont(undefined, 'bold')
+      doc.setFont('helvetica', 'bold')
       addText(bill.status.toUpperCase(), badgeX + badgeWidth / 2, yPos + 4.5, { align: 'center' })
 
       // Footer
       yPos = pageHeight - 15
       doc.setTextColor(150, 150, 150)
       doc.setFontSize(9)
-      doc.setFont(undefined, 'normal')
+      doc.setFont('helvetica', 'normal')
       addText('Thank you for your business!', pageWidth / 2, yPos, { align: 'center' })
     }
 
