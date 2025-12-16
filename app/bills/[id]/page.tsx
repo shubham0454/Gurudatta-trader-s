@@ -131,6 +131,11 @@ export default function BillDetailPage() {
   }
 
   const handleDownloadPDF = async () => {
+    if (!bill) {
+      showToast('Bill data not available', 'error')
+      return
+    }
+    
     try {
       const { jsPDF } = await import('jspdf')
       const doc = new jsPDF()
