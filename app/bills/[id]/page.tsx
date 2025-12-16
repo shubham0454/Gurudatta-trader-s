@@ -62,6 +62,7 @@ export default function BillDetailPage() {
     return () => {
       document.title = originalTitle
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id, router])
 
   const fetchBill = async () => {

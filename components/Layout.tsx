@@ -34,7 +34,7 @@ export default function Layout({ children }: LayoutProps) {
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-800 text-slate-100 transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 ease-in-out lg:translate-x-0`}>
         <div className="flex flex-col h-full">
           <div className="p-4 sm:p-6 border-b border-slate-700">
-            <h1 className="text-xl sm:text-2xl font-bold text-white">Gurudatta trader's</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-white">Gurudatta trader&apos;s</h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-1 no-print">Admin Panel</p>
           </div>
 

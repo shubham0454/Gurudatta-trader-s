@@ -51,7 +51,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4">
       <div className="bg-slate-800 p-6 sm:p-8 rounded-lg shadow-lg w-full max-w-md border border-slate-700">
-        <h1 className="text-2xl sm:text-3xl font-bold text-center mb-2 text-white">Gurudatta trader's</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-center mb-2 text-white">Gurudatta trader&apos;s</h1>
         <p className="text-center text-slate-400 mb-6 sm:mb-8">Admin Login</p>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
