@@ -140,7 +140,7 @@ export default function BillDetailPage() {
       let yPos = margin
 
       // Helper function to add text
-      const addText = (text: string, x: number, y: number, options?: { fontSize?: number; fontStyle?: string; align?: string; color?: number[] }) => {
+      const addText = (text: string, x: number, y: number, options?: { fontSize?: number; fontStyle?: string; align?: 'left' | 'center' | 'right' | 'justify'; color?: number[] }) => {
         doc.setFontSize(options?.fontSize || 10)
         doc.setFont('helvetica', options?.fontStyle || 'normal')
         if (options?.color) {
@@ -148,7 +148,8 @@ export default function BillDetailPage() {
         } else {
           doc.setTextColor(0, 0, 0)
         }
-        doc.text(text, x, y, { align: options?.align || 'left' })
+        const alignValue: 'left' | 'center' | 'right' | 'justify' = (options?.align || 'left') as 'left' | 'center' | 'right' | 'justify'
+        doc.text(text, x, y, { align: alignValue })
       }
 
       // Helper function to add line
