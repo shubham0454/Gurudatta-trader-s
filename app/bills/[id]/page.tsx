@@ -142,7 +142,7 @@ export default function BillDetailPage() {
       // Helper function to add text
       const addText = (text: string, x: number, y: number, options?: { fontSize?: number; fontStyle?: string; align?: string; color?: number[] }) => {
         doc.setFontSize(options?.fontSize || 10)
-        doc.setFont(undefined, options?.fontStyle || 'normal')
+        doc.setFont('helvetica', options?.fontStyle || 'normal')
         if (options?.color) {
           doc.setTextColor(options.color[0], options.color[1], options.color[2])
         } else {
