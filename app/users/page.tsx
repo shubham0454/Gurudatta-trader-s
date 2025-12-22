@@ -40,7 +40,7 @@ export default function UsersPage() {
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paymentDescription, setPaymentDescription] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
-  const [userTypeFilter, setUserTypeFilter] = useState<string>('all') // 'all', 'BMC', 'Dabhadi'
+  const [userTypeFilter, setUserTypeFilter] = useState<string>('all') // 'all', 'BMC', 'Dabhadi', 'Customer'
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
 
@@ -204,7 +204,7 @@ export default function UsersPage() {
       address: user.address || '',
       email: user.email || '',
       userCode: user.userCode || '',
-      userType: (user.userType as 'BMC' | 'Dabhadi') || 'BMC',
+      userType: (user.userType as 'BMC' | 'Dabhadi' | 'Customer') || 'BMC',
       status: (user.status as 'active' | 'inactive') || 'active',
     })
     setIsModalOpen(true)
@@ -291,6 +291,7 @@ export default function UsersPage() {
               <option value="all">All Users</option>
               <option value="BMC">BMC</option>
               <option value="Dabhadi">Dabhadi</option>
+              <option value="Customer">Customer</option>
             </select>
           </div>
         </div>
@@ -535,6 +536,7 @@ export default function UsersPage() {
               >
                 <option value="BMC">BMC</option>
                 <option value="Dabhadi">Dabhadi</option>
+                <option value="Customer">Customer</option>
               </select>
               {errors.userType && (
                 <p className="mt-1 text-sm text-red-400">{errors.userType.message}</p>

@@ -28,7 +28,7 @@ model User {
   mobileNo    String
   address     String?
   email       String?
-  userType    String   @default("BMC") // BMC or Dabhadi
+  userType    String   @default("BMC") // BMC, Dabhadi, or Customer
   status      String   @default("active") // active or inactive
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

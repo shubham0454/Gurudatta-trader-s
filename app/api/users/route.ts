@@ -8,10 +8,10 @@ export async function GET(request: NextRequest) {
     authMiddleware(request)
 
     const { searchParams } = new URL(request.url)
-    const userType = searchParams.get('userType') // Filter by BMC or Dabhadi
+    const userType = searchParams.get('userType') // Filter by BMC, Dabhadi, or Customer
 
     const where: any = {}
-    if (userType && (userType === 'BMC' || userType === 'Dabhadi')) {
+    if (userType && (userType === 'BMC' || userType === 'Dabhadi' || userType === 'Customer')) {
       where.userType = userType
     }
 
@@ -105,7 +105,12 @@ export async function POST(request: NextRequest) {
     let userCode = validatedData.userCode
     if (!userCode) {
       const userCount = await prisma.user.count()
-      const prefix = validatedData.userType === 'Dabhadi' ? 'DAB' : 'BMC'
+      let prefix = 'BMC'
+      if (validatedData.userType === 'Dabhadi') {
+        prefix = 'DAB'
+      } else if (validatedData.userType === 'Customer') {
+        prefix = 'CUS'
+      }
       userCode = `${prefix}-${String(userCount + 1).padStart(4, '0')}`
       
       // Ensure uniqueness

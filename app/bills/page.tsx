@@ -70,7 +70,7 @@ export default function BillsPage() {
   const [quickBillStatus, setQuickBillStatus] = useState<string>('pending')
   const [quickBillPaidAmount, setQuickBillPaidAmount] = useState<string>('0')
   const [searchQuery, setSearchQuery] = useState('')
-  const [userTypeFilter, setUserTypeFilter] = useState<string>('all') // 'all', 'BMC', 'Dabhadi'
+  const [userTypeFilter, setUserTypeFilter] = useState<string>('all') // 'all', 'BMC', 'Dabhadi', 'Customer'
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
 
@@ -409,6 +409,7 @@ export default function BillsPage() {
               <option value="all">All Users</option>
               <option value="BMC">BMC</option>
               <option value="Dabhadi">Dabhadi</option>
+              <option value="Customer">Customer</option>
             </select>
           </div>
         </div>
@@ -607,6 +608,7 @@ export default function BillsPage() {
                     >
                       <option value="BMC">BMC</option>
                       <option value="Dabhadi">Dabhadi</option>
+                      <option value="Customer">Customer</option>
                     </select>
                   </div>
                 </div>

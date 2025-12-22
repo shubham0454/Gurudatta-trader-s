@@ -11,7 +11,7 @@ export const userSchema = z.object({
   address: z.string().optional(),
   email: z.string().email('Invalid email').optional().or(z.literal('')),
   userCode: z.string().optional(), // Auto-generated if not provided
-  userType: z.enum(['BMC', 'Dabhadi']).default('BMC'),
+  userType: z.enum(['BMC', 'Dabhadi', 'Customer']).default('BMC'),
   status: z.enum(['active', 'inactive']).default('active'),
 })
 
