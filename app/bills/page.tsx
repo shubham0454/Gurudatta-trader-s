@@ -73,6 +73,9 @@ export default function BillsPage() {
   const [userTypeFilter, setUserTypeFilter] = useState<string>('all') // 'all', 'BMC', 'Dabhadi', 'Customer'
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
+  const [userSearchQuery, setUserSearchQuery] = useState('') // For user search in bill creation
+  const [userTypeFilterForSelect, setUserTypeFilterForSelect] = useState<string>('all') // For user type filter in bill creation
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false)
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -362,10 +365,15 @@ export default function BillsPage() {
               onClick={() => {
                 setSelectedUserId('')
                 setIsNewUser(false)
+                setIsOneTimeCustomer(false)
                 setNewUserDetails({ name: '', mobileNo: '', address: '', userType: 'BMC' })
+                setOneTimeCustomerDetails({ name: '', mobileNo: '', address: '' })
                 setBillItems([])
                 setBillStatus('paid')
                 setBillPaidAmount('0')
+                setUserSearchQuery('')
+                setUserTypeFilterForSelect('all')
+                setIsUserDropdownOpen(false)
                 setIsModalOpen(true)
               }}
               className="bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 text-sm sm:text-base w-full sm:w-auto"
@@ -496,6 +504,9 @@ export default function BillsPage() {
             setIsModalOpen(false)
             setSelectedUserId('')
             setBillItems([])
+            setUserSearchQuery('')
+            setUserTypeFilterForSelect('all')
+            setIsUserDropdownOpen(false)
           }}
           title="Create Bill"
         >
@@ -510,6 +521,9 @@ export default function BillsPage() {
                     setSelectedUserId('')
                     setNewUserDetails({ name: '', mobileNo: '', address: '', userType: 'BMC' })
                     setOneTimeCustomerDetails({ name: '', mobileNo: '', address: '' })
+                    setUserSearchQuery('')
+                    setUserTypeFilterForSelect('all')
+                    setIsUserDropdownOpen(false)
                   }}
                   className={`px-3 py-1 rounded text-sm ${!isNewUser && !isOneTimeCustomer ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
                 >
@@ -534,6 +548,9 @@ export default function BillsPage() {
                     setIsOneTimeCustomer(true)
                     setSelectedUserId('')
                     setNewUserDetails({ name: '', mobileNo: '', address: '', userType: 'BMC' })
+                    setUserSearchQuery('')
+                    setUserTypeFilterForSelect('all')
+                    setIsUserDropdownOpen(false)
                   }}
                   className={`px-3 py-1 rounded text-sm ${isOneTimeCustomer ? 'bg-green-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
                 >
@@ -546,18 +563,127 @@ export default function BillsPage() {
                   <label className="block text-sm font-medium text-slate-300 mb-1">
                     Select User *
                   </label>
-                  <select
-                    value={selectedUserId}
-                    onChange={(e) => setSelectedUserId(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white"
-                  >
-                    <option value="">Select a user</option>
-                    {users.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.name} ({user.mobileNo}) - {user.userType || 'BMC'}
-                      </option>
-                    ))}
-                  </select>
+                  
+                  {/* User Type Filter */}
+                  <div className="mb-2">
+                    <select
+                      value={userTypeFilterForSelect}
+                      onChange={(e) => {
+                        setUserTypeFilterForSelect(e.target.value)
+                        setIsUserDropdownOpen(true)
+                      }}
+                      className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white text-sm"
+                    >
+                      <option value="all">All Types</option>
+                      <option value="BMC">BMC</option>
+                      <option value="Dabhadi">Dabhadi</option>
+                      <option value="Customer">Customer</option>
+                    </select>
+                  </div>
+
+                  {/* Searchable User Dropdown */}
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Search by name or mobile number..."
+                      value={userSearchQuery}
+                      onChange={(e) => {
+                        setUserSearchQuery(e.target.value)
+                        setIsUserDropdownOpen(true)
+                      }}
+                      onFocus={() => setIsUserDropdownOpen(true)}
+                      className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white placeholder-slate-400"
+                    />
+                    
+                    {/* Selected User Display */}
+                    {selectedUserId && !isUserDropdownOpen && (
+                      <div className="mt-2 p-2 bg-blue-900/30 border border-blue-700 rounded-lg text-sm text-white">
+                        {(() => {
+                          const selectedUser = users.find(u => u.id === selectedUserId)
+                          return selectedUser ? (
+                            <div className="flex justify-between items-center">
+                              <span>
+                                {selectedUser.name} ({selectedUser.mobileNo}) - {selectedUser.userType || 'BMC'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedUserId('')
+                                  setUserSearchQuery('')
+                                }}
+                                className="text-red-400 hover:text-red-300 text-xs ml-2"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ) : null
+                        })()}
+                      </div>
+                    )}
+
+                    {/* Dropdown List */}
+                    {isUserDropdownOpen && (
+                      <div className="absolute z-50 w-full mt-1 bg-slate-700 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        {(() => {
+                          // Filter users based on search query and type filter
+                          const filteredUsers = users.filter((user) => {
+                            const matchesType = userTypeFilterForSelect === 'all' || user.userType === userTypeFilterForSelect
+                            const matchesSearch = 
+                              userSearchQuery === '' ||
+                              user.name.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                              user.mobileNo.includes(userSearchQuery) ||
+                              (user.userType || 'BMC').toLowerCase().includes(userSearchQuery.toLowerCase())
+                            return matchesType && matchesSearch
+                          })
+
+                          if (filteredUsers.length === 0) {
+                            return (
+                              <div className="px-4 py-3 text-sm text-slate-400 text-center">
+                                No users found
+                              </div>
+                            )
+                          }
+
+                          return filteredUsers.map((user) => (
+                            <button
+                              key={user.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedUserId(user.id)
+                                setUserSearchQuery('')
+                                setIsUserDropdownOpen(false)
+                              }}
+                              className={`w-full px-4 py-2 text-left text-sm hover:bg-slate-600 transition-colors ${
+                                selectedUserId === user.id
+                                  ? 'bg-blue-600 text-white'
+                                  : 'text-white'
+                              }`}
+                            >
+                              <div className="flex justify-between items-center">
+                                <div>
+                                  <div className="font-medium">{user.name}</div>
+                                  <div className="text-xs text-slate-300">
+                                    {user.mobileNo} - {user.userType || 'BMC'}
+                                  </div>
+                                </div>
+                                {selectedUserId === user.id && (
+                                  <span className="text-blue-300">✓</span>
+                                )}
+                              </div>
+                            </button>
+                          ))
+                        })()}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Click outside to close dropdown */}
+                  {isUserDropdownOpen && (
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setIsUserDropdownOpen(false)}
+                    />
+                  )}
                 </>
               ) : isNewUser ? (
                 <div className="space-y-3">
@@ -861,6 +987,9 @@ export default function BillsPage() {
                   setBillItems([])
                   setBillStatus('paid')
                   setBillPaidAmount('0')
+                  setUserSearchQuery('')
+                  setUserTypeFilterForSelect('all')
+                  setIsUserDropdownOpen(false)
                 }}
                 className="px-4 py-2 border border-slate-600 rounded-lg text-slate-300 hover:bg-slate-700"
               >
