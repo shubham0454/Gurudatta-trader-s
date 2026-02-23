@@ -56,6 +56,7 @@ export default function BillsPage() {
   const [feeds, setFeeds] = useState<Feed[]>([])
   const [loading, setLoading] = useState(true)
   const [isFetching, setIsFetching] = useState(false) // Prevent duplicate calls
+  const [isSubmitting, setIsSubmitting] = useState(false) // Prevent duplicate bill submissions
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isQuickBillOpen, setIsQuickBillOpen] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState('')
@@ -196,6 +197,12 @@ export default function BillsPage() {
   }
 
   const handleCreateBill = async () => {
+    // Prevent duplicate submissions
+    if (isSubmitting) {
+      showToast('Please wait, bill is being created...', 'warning')
+      return
+    }
+
     // Validate user selection
     if (!isNewUser && !isOneTimeCustomer && !selectedUserId) {
       showToast('Please select a user, create a new user, or enter one-time customer details', 'warning')
@@ -233,6 +240,7 @@ export default function BillsPage() {
     }
 
     try {
+      setIsSubmitting(true) // Set submitting state
       const token = localStorage.getItem('token')
       let userId = selectedUserId
       
@@ -330,11 +338,21 @@ export default function BillsPage() {
         showToast('Bill created successfully! Stock has been updated.', 'success')
       } else {
         const error = await response.json()
-        showToast(error.error || 'Failed to create bill', 'error')
+        // Handle duplicate bill error specifically
+        if (response.status === 409 && error.duplicateBillNumber) {
+          showToast(
+            `Duplicate bill detected! A similar bill (${error.duplicateBillNumber}) was created recently. Please check the bills list.`,
+            'error'
+          )
+        } else {
+          showToast(error.error || 'Failed to create bill', 'error')
+        }
       }
     } catch (error) {
       console.error('Error creating bill:', error)
       showToast('An error occurred while creating the bill', 'error')
+    } finally {
+      setIsSubmitting(false) // Reset submitting state
     }
   }
 
@@ -997,9 +1015,12 @@ export default function BillsPage() {
               </button>
               <button
                 onClick={handleCreateBill}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                disabled={isSubmitting}
+                className={`px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 ${
+                  isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
               >
-                Create Bill
+                {isSubmitting ? 'Creating...' : 'Create Bill'}
               </button>
             </div>
           </div>

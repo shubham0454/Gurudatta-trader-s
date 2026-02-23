@@ -132,10 +132,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const validatedData = billSchema.parse(body)
 
-    // Generate bill number
-    const billCount = await prisma.bill.count()
-    const billNumber = `BILL-${String(billCount + 1).padStart(6, '0')}`
-
     // Calculate total amount
     let totalAmount = 0
     const items: Array<{
@@ -175,8 +171,54 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // Check for duplicate bills before creating
+    // Look for bills with same userId, same total amount, created within last 10 seconds
+    const fiveSecondsAgo = new Date(Date.now() - 10000) // 10 seconds ago
+    const recentBills = await prisma.bill.findMany({
+      where: {
+        userId: validatedData.userId,
+        totalAmount: totalAmount,
+        createdAt: {
+          gte: fiveSecondsAgo,
+        },
+      },
+      include: {
+        items: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 5, // Check last 5 recent bills
+    })
+
+    // Check if any recent bill has the same items (same feedIds and quantities)
+    for (const recentBill of recentBills) {
+      if (recentBill.items.length === items.length) {
+        const recentItemsMap = new Map(
+          recentBill.items.map(item => [`${item.feedId}-${item.quantity}`, true])
+        )
+        const allItemsMatch = items.every(item => 
+          recentItemsMap.has(`${item.feedId}-${item.quantity}`)
+        )
+        
+        if (allItemsMatch) {
+          return NextResponse.json(
+            { 
+              error: 'Duplicate bill detected. A similar bill was created recently. Please check the bills list.',
+              duplicateBillId: recentBill.id,
+              duplicateBillNumber: recentBill.billNumber,
+            },
+            { status: 409 } // 409 Conflict
+          )
+        }
+      }
+    }
+
     // Use transaction to ensure atomicity - create bill and update stock together
     const bill = await prisma.$transaction(async (tx) => {
+      // Generate bill number inside transaction to prevent race conditions
+      const billCount = await tx.bill.count()
+      const billNumber = `BILL-${String(billCount + 1).padStart(6, '0')}`
       // Double-check stock availability inside transaction to prevent race conditions
       for (const item of validatedData.items) {
         const feed = await tx.feed.findUnique({
@@ -211,7 +253,7 @@ export async function POST(request: NextRequest) {
       // Create bill with items
       const newBill = await tx.bill.create({
         data: {
-          billNumber,
+          billNumber, // Generated inside transaction
           userId: validatedData.userId,
           totalAmount,
           paidAmount,
@@ -262,6 +304,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: error.message },
         { status: 400 }
+      )
+    }
+    // Handle unique constraint violation (duplicate bill number - should be rare now)
+    if (error.code === 'P2002' && error.meta?.target?.includes('billNumber')) {
+      return NextResponse.json(
+        { error: 'Bill number conflict detected. Please try again.' },
+        { status: 409 }
       )
     }
     console.error('Error creating bill:', error)
