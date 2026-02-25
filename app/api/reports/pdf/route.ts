@@ -108,9 +108,9 @@ export async function GET(request: NextRequest) {
       const maxWidth = options.maxWidth || pageWidth - margin * 2
       doc.setFontSize(fontSize)
       if (options.bold) {
-        doc.setFont(undefined, 'bold')
+        doc.setFont('helvetica', 'bold')
       } else {
-        doc.setFont(undefined, 'normal')
+        doc.setFont('helvetica', 'normal')
       }
       if (options.color) {
         if (typeof options.color === 'string') {
