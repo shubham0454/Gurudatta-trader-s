@@ -72,7 +72,7 @@ export async function PUT(
 
     // Check if mobileNo is being changed and if it conflicts with another user
     if (validatedData.mobileNo !== existingUser.mobileNo) {
-      const mobileConflict = await prisma.user.findUnique({
+      const mobileConflict = await prisma.user.findFirst({
         where: { mobileNo: validatedData.mobileNo },
       })
       if (mobileConflict && mobileConflict.id !== params.id) {
