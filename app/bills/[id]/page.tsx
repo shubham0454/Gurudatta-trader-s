@@ -144,17 +144,56 @@ export default function BillDetailPage() {
       const margin = 15
       let yPos = margin
 
-      // Helper function to add text
+      // Helper function to sanitize text for PDF (handle Unicode properly)
+      const sanitizeText = (str: string): string => {
+        if (!str) return ''
+        let sanitized = String(str)
+        // Replace HTML entities
+        sanitized = sanitized.replace(/&amp;/g, '&')
+        sanitized = sanitized.replace(/&lt;/g, '<')
+        sanitized = sanitized.replace(/&gt;/g, '>')
+        sanitized = sanitized.replace(/&quot;/g, '"')
+        sanitized = sanitized.replace(/&#39;/g, "'")
+        sanitized = sanitized.replace(/<[^>]*>/g, '')
+        return sanitized.trim()
+      }
+
+      // Helper function to add text with Unicode handling
       const addText = (text: string, x: number, y: number, options?: { fontSize?: number; fontStyle?: string; align?: 'left' | 'center' | 'right' | 'justify'; color?: number[] }) => {
         doc.setFontSize(options?.fontSize || 10)
         doc.setFont('helvetica', options?.fontStyle || 'normal')
         if (options?.color) {
           doc.setTextColor(options.color[0], options.color[1], options.color[2])
         } else {
-          doc.setTextColor(0, 0, 0)
+          doc.setTextColor(0, 0, 0) // Black
         }
+        const cleanText = sanitizeText(text)
         const alignValue: 'left' | 'center' | 'right' | 'justify' = (options?.align || 'left') as 'left' | 'center' | 'right' | 'justify'
-        doc.text(text, x, y, { align: alignValue })
+        try {
+          // Check if text contains non-ASCII characters (Unicode)
+          if (/[^\x00-\x7F]/.test(cleanText)) {
+            // jsPDF default fonts don't support Unicode - create ASCII-safe version
+            const asciiSafe = cleanText
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+              .replace(/[^\x00-\x7F]/g, (char) => {
+                // For Devanagari and other Unicode, use placeholder
+                const code = char.charCodeAt(0)
+                if (code >= 0x0900 && code <= 0x097F) {
+                  // Devanagari range
+                  return '?'
+                }
+                return '?'
+              })
+            doc.text(asciiSafe || cleanText.substring(0, 100), x, y, { align: alignValue })
+          } else {
+            doc.text(cleanText, x, y, { align: alignValue })
+          }
+        } catch (e) {
+          // Fallback: use ASCII-safe version
+          const safeText = cleanText.replace(/[^\x00-\x7F]/g, '?').substring(0, 100)
+          doc.text(safeText, x, y, { align: alignValue })
+        }
       }
 
       // Helper function to add line
@@ -192,12 +231,13 @@ export default function BillDetailPage() {
       
       addText("Customer Information", margin + 3, yPos + 7, { fontSize: 11, fontStyle: 'bold' })
       yPos += 10
-      addText(`Name: ${bill.user.name}`, margin + 3, yPos, { fontSize: 10 })
+      addText(`Name: ${sanitizeText(bill.user.name)}`, margin + 3, yPos, { fontSize: 10 })
       yPos += 6
       addText(`Mobile: ${bill.user.mobileNo}`, margin + 3, yPos, { fontSize: 10 })
       yPos += 6
       if (bill.user.address) {
-        const addressLines = doc.splitTextToSize(`Address: ${bill.user.address}`, pageWidth - margin * 2 - 6)
+        const addressText = `Address: ${sanitizeText(bill.user.address)}`
+        const addressLines = doc.splitTextToSize(addressText, pageWidth - margin * 2 - 6)
         doc.text(addressLines, margin + 3, yPos)
         yPos += addressLines.length * 5
       }
@@ -235,7 +275,7 @@ export default function BillDetailPage() {
           doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
         }
 
-        addText(item.feed.name, margin + 2, yPos + 5.5, { fontSize: 9 })
+        addText(sanitizeText(item.feed.name), margin + 2, yPos + 5.5, { fontSize: 9 })
         addText(`${item.feed.weight} kg`, margin + 60, yPos + 5.5, { fontSize: 9 })
         addText(item.quantity.toFixed(0), margin + 85, yPos + 5.5, { fontSize: 9 })
         addText(`₹${item.unitPrice.toFixed(2)}`, margin + 105, yPos + 5.5, { fontSize: 9 })

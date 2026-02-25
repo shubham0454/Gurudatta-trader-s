@@ -449,17 +449,16 @@ export default function BillsPage() {
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">User</th>
                   {/* <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">Type</th> */}
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase hidden sm:table-cell">Date</th>
+                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">Quantity</th>
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">Total</th>
-                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase hidden lg:table-cell">Paid</th>
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">Pending</th>
-                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">Status</th>
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-right text-xs font-medium text-slate-200 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-700">
                 {paginatedBills.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
+                    <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
                       {searchQuery || userTypeFilter !== 'all' ? 'No bills found matching your filters' : 'No bills found'}
                     </td>
                   </tr>
@@ -483,22 +482,11 @@ export default function BillsPage() {
                       <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm text-slate-300 hidden sm:table-cell">
                         {new Date(bill.createdAt).toLocaleDateString()}
                       </td>
-                      <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm text-white">₹{bill.totalAmount.toFixed(2)}</td>
-                      <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm text-green-400 hidden lg:table-cell">₹{bill.paidAmount.toFixed(2)}</td>
-                      <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm text-amber-400">₹{bill.pendingAmount.toFixed(2)}</td>
-                      <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm">
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            bill.status === 'paid'
-                              ? 'bg-green-900/50 text-green-300'
-                              : bill.status === 'partial'
-                              ? 'bg-amber-900/50 text-amber-300'
-                              : 'bg-red-900/50 text-red-300'
-                          }`}
-                        >
-                          {bill.status}
-                        </span>
+                      <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm text-white font-medium">
+                        {bill.items.reduce((sum, item) => sum + item.quantity, 0).toFixed(0)}
                       </td>
+                      <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm text-white">₹{bill.totalAmount.toFixed(2)}</td>
+                      <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm text-amber-400">₹{bill.pendingAmount.toFixed(2)}</td>
                       <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-right text-sm">
                         <button
                           onClick={() => handleViewBill(bill.id)}

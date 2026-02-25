@@ -11,7 +11,11 @@ export default function ReportsPage() {
   const router = useRouter()
   const [reportType, setReportType] = useState<'today' | 'monthly' | 'yearly'>('monthly')
   const [userId, setUserId] = useState('')
-  const [users, setUsers] = useState<Array<{ id: string; name: string; mobileNo: string }>>([])
+  const [users, setUsers] = useState<Array<{ id: string; name: string; mobileNo: string; userType?: string }>>([])
+  const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; mobileNo: string; userType?: string }>>([]) // Store all users for search
+  const [userSearchQuery, setUserSearchQuery] = useState('')
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false)
+  const [userTypeFilter, setUserTypeFilter] = useState<string>('all') // 'all', 'BMC', 'Dabhadi'
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -40,9 +44,14 @@ export default function ReportsPage() {
       }
       
       const data = await response.json()
-      setUsers(Array.isArray(data.users) ? data.users : [])
+      const usersList = Array.isArray(data.users) ? data.users : []
+      // Filter to show only active users
+      const activeUsers = usersList.filter((user: any) => !user.status || user.status === 'active')
+      setAllUsers(activeUsers)
+      setUsers(activeUsers)
     } catch (error) {
       console.error('Error fetching users:', error)
+      setAllUsers([])
       setUsers([])
     }
   }
@@ -111,26 +120,134 @@ export default function ReportsPage() {
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Filter by User (Optional)
-              </label>
-              <select
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white"
-              >
-                <option value="">All Users</option>
-                {Array.isArray(users) && users.length > 0 ? (
-                  users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.name} ({user.mobileNo})
-                    </option>
-                  ))
-                ) : (
-                  <option value="" disabled>Loading users...</option>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Filter by User (Optional)
+                </label>
+                {/* Searchable User Dropdown */}
+                <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search by name or mobile number..."
+                  value={userSearchQuery}
+                  onChange={(e) => {
+                    setUserSearchQuery(e.target.value)
+                    setIsUserDropdownOpen(true)
+                  }}
+                  onFocus={() => setIsUserDropdownOpen(true)}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white placeholder-slate-400"
+                />
+                
+                {/* Selected User Display */}
+                {userId && !isUserDropdownOpen && (
+                  <div className="mt-2 p-2 bg-blue-900/30 border border-blue-700 rounded-lg text-sm text-white">
+                    {(() => {
+                      const selectedUser = allUsers.find(u => u.id === userId)
+                      return selectedUser ? (
+                        <div className="flex justify-between items-center">
+                          <span>
+                            {selectedUser.name} ({selectedUser.mobileNo}) - {selectedUser.userType || 'BMC'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUserId('')
+                              setUserSearchQuery('')
+                            }}
+                            className="text-red-400 hover:text-red-300 text-xs ml-2"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : null
+                    })()}
+                  </div>
                 )}
-              </select>
+
+                {/* Dropdown List */}
+                {isUserDropdownOpen && (
+                  <div className="absolute z-50 w-full mt-1 bg-slate-700 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {(() => {
+                      // Filter users based on search query and user type filter
+                      const filteredUsers = allUsers.filter((user) => {
+                        const matchesType = userTypeFilter === 'all' || user.userType === userTypeFilter
+                        const matchesSearch = 
+                          userSearchQuery === '' ||
+                          user.name.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                          user.mobileNo.includes(userSearchQuery) ||
+                          (user.userType || 'BMC').toLowerCase().includes(userSearchQuery.toLowerCase())
+                        return matchesType && matchesSearch
+                      })
+
+                      if (filteredUsers.length === 0) {
+                        return (
+                          <div className="px-4 py-3 text-sm text-slate-400 text-center">
+                            No users found
+                          </div>
+                        )
+                      }
+
+                      return filteredUsers.map((user) => (
+                        <button
+                          key={user.id}
+                          type="button"
+                          onClick={() => {
+                            setUserId(user.id)
+                            setUserSearchQuery('')
+                            setIsUserDropdownOpen(false)
+                          }}
+                          className={`w-full px-4 py-2 text-left text-sm hover:bg-slate-600 transition-colors ${
+                            userId === user.id
+                              ? 'bg-blue-600 text-white'
+                              : 'text-white'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <div className="font-medium">{user.name}</div>
+                              <div className="text-xs text-slate-300">
+                                {user.mobileNo} - {user.userType || 'BMC'}
+                              </div>
+                            </div>
+                            {userId === user.id && (
+                              <span className="text-blue-300">✓</span>
+                            )}
+                          </div>
+                        </button>
+                      ))
+                    })()}
+                  </div>
+                )}
+
+                {/* Click outside to close dropdown */}
+                {isUserDropdownOpen && (
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setIsUserDropdownOpen(false)}
+                  />
+                )}
+              </div>
+            </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  User Type
+                </label>
+                <select
+                  value={userTypeFilter}
+                  onChange={(e) => {
+                    setUserTypeFilter(e.target.value)
+                    setUserId('') // Clear user selection when filter changes
+                    setUserSearchQuery('')
+                  }}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white"
+                >
+                  <option value="all">All Users</option>
+                  <option value="BMC">BMC</option>
+                  <option value="Dabhadi">Dabhadi</option>
+                </select>
+              </div>
             </div>
 
             <button

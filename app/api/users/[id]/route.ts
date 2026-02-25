@@ -58,17 +58,70 @@ export async function PUT(
     const body = await request.json()
     const validatedData = userSchema.parse(body)
 
+    // First, check if the user exists
+    const existingUser = await prisma.user.findUnique({
+      where: { id: params.id },
+    })
+
+    if (!existingUser) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      )
+    }
+
+    // Check if mobileNo is being changed and if it conflicts with another user
+    if (validatedData.mobileNo !== existingUser.mobileNo) {
+      const mobileConflict = await prisma.user.findUnique({
+        where: { mobileNo: validatedData.mobileNo },
+      })
+      if (mobileConflict && mobileConflict.id !== params.id) {
+        return NextResponse.json(
+          { error: 'Mobile number already exists for another user' },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Check if userCode is being changed and if it conflicts with another user
+    if (validatedData.userCode && validatedData.userCode !== existingUser.userCode) {
+      const codeConflict = await prisma.user.findUnique({
+        where: { userCode: validatedData.userCode },
+      })
+      if (codeConflict && codeConflict.id !== params.id) {
+        return NextResponse.json(
+          { error: 'User code already exists for another user' },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Prepare update data - only include fields that should be updated
+    const updateData: any = {
+      name: validatedData.name,
+      mobileNo: validatedData.mobileNo,
+      address: validatedData.address || null,
+      email: validatedData.email || null,
+    }
+
+    // Only update userCode if provided and different
+    if (validatedData.userCode && validatedData.userCode !== existingUser.userCode) {
+      updateData.userCode = validatedData.userCode
+    }
+
+    // Only update userType if provided
+    if (validatedData.userType) {
+      updateData.userType = validatedData.userType
+    }
+
+    // Only update status if provided
+    if (validatedData.status) {
+      updateData.status = validatedData.status
+    }
+
     const user = await prisma.user.update({
       where: { id: params.id },
-      data: {
-        name: validatedData.name,
-        mobileNo: validatedData.mobileNo,
-        address: validatedData.address || null,
-        email: validatedData.email || null,
-        userCode: validatedData.userCode || undefined,
-        userType: validatedData.userType || undefined,
-        status: validatedData.status || undefined,
-      },
+      data: updateData,
     })
 
     return NextResponse.json({ user })
@@ -88,6 +141,22 @@ export async function PUT(
         { status: 404 }
       )
     }
+    // Handle unique constraint violations
+    if (error.code === 'P2002') {
+      if (error.meta?.target?.includes('mobileNo')) {
+        return NextResponse.json(
+          { error: 'Mobile number already exists' },
+          { status: 400 }
+        )
+      }
+      if (error.meta?.target?.includes('userCode')) {
+        return NextResponse.json(
+          { error: 'User code already exists' },
+          { status: 400 }
+        )
+      }
+    }
+    console.error('Error updating user:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

@@ -169,8 +169,9 @@ export default function UsersPage() {
   const onSubmit = async (data: UserInput) => {
     try {
       const token = localStorage.getItem('token')
-      const url = editingUser ? `/api/users/${editingUser.id}` : '/api/users'
-      const method = editingUser ? 'PUT' : 'POST'
+      const isEditing = !!editingUser
+      const url = isEditing ? `/api/users/${editingUser.id}` : '/api/users'
+      const method = isEditing ? 'PUT' : 'POST'
 
       const response = await apiRequest(url, {
         method,
@@ -185,7 +186,7 @@ export default function UsersPage() {
         reset()
         setEditingUser(null)
         fetchUsers()
-        showToast(editingUser ? 'User updated successfully!' : 'User created successfully!', 'success')
+        showToast(isEditing ? 'User updated successfully!' : 'User created successfully!', 'success')
       } else {
         const error = await response.json()
         showToast(error.error || 'Failed to save user', 'error')

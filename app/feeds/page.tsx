@@ -17,7 +17,9 @@ interface Feed {
   brand: string | null
   weight: number
   defaultPrice: number
-  stock: number
+  stock: number // Current available stock
+  soldStock?: number // Total sold stock
+  totalStock?: number // Total stock (current + sold)
 }
 
 export default function FeedsPage() {
@@ -232,14 +234,16 @@ export default function FeedsPage() {
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase hidden sm:table-cell">Brand</th>
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">Weight</th>
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase hidden lg:table-cell">Price</th>
-                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">Stock</th>
+                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">Current Stock</th>
+                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase hidden sm:table-cell">Sold Stock</th>
+                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase hidden md:table-cell">Total Stock</th>
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-right text-xs font-medium text-slate-200 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-slate-800 divide-y divide-slate-700">
                 {paginatedFeeds.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                    <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
                       {searchQuery ? 'No feeds found matching your search' : 'No feeds found'}
                     </td>
                   </tr>
@@ -267,6 +271,35 @@ export default function FeedsPage() {
                           </span>
                           <span className="text-xs text-slate-400 hidden sm:block">
                             Available
+                          </span>
+                          {/* Mobile view: Show sold and total stock */}
+                          <div className="sm:hidden mt-1 space-y-0.5">
+                            <span className="text-xs text-blue-400">
+                              Sold: {(feed.soldStock || 0).toFixed(0)}
+                            </span>
+                            <span className="text-xs text-purple-400 block">
+                              Total: {(feed.totalStock || feed.stock).toFixed(0)}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm text-slate-300 hidden sm:table-cell">
+                        <div className="flex flex-col">
+                          <span className="text-blue-400 font-semibold">
+                            {(feed.soldStock || 0).toFixed(0)}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            Sold
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm text-slate-300 hidden md:table-cell">
+                        <div className="flex flex-col">
+                          <span className="text-purple-400 font-semibold">
+                            {(feed.totalStock || feed.stock).toFixed(0)}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            Total
                           </span>
                         </div>
                       </td>

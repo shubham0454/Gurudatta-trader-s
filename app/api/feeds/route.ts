@@ -9,9 +9,38 @@ export async function GET(request: NextRequest) {
 
     const feeds = await prisma.feed.findMany({
       orderBy: { name: 'asc' },
+      include: {
+        billItems: {
+          select: {
+            quantity: true,
+          },
+        },
+      },
     })
 
-    return NextResponse.json({ feeds })
+    // Calculate sold stock and total stock for each feed
+    const feedsWithStats = feeds.map((feed) => {
+      // Calculate sold stock (sum of all bill items quantities)
+      const soldStock = feed.billItems.reduce((sum, item) => sum + item.quantity, 0)
+      
+      // Total stock = current stock + sold stock
+      const totalStock = feed.stock + soldStock
+
+      return {
+        id: feed.id,
+        name: feed.name,
+        brand: feed.brand,
+        weight: feed.weight,
+        defaultPrice: feed.defaultPrice,
+        stock: feed.stock, // Current available stock
+        soldStock: soldStock, // Total sold stock
+        totalStock: totalStock, // Total stock (current + sold)
+        createdAt: feed.createdAt,
+        updatedAt: feed.updatedAt,
+      }
+    })
+
+    return NextResponse.json({ feeds: feedsWithStats })
   } catch (error: any) {
     if (error.status === 401) {
       return error
