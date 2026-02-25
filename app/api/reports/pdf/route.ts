@@ -1,46 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authMiddleware } from '@/lib/middleware'
 import { prisma } from '@/lib/prisma'
-import { TDocumentDefinitions } from 'pdfmake/interfaces'
-import fs from 'fs'
-import path from 'path'
-
-// Get PDFMake printer with fonts configured
-function getPdfPrinter() {
-  // Use require() for server-side to avoid Next.js webpack bundling issues
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const PdfPrinterModule = require('pdfmake/js/printer')
-  const PdfPrinter = PdfPrinterModule.default || PdfPrinterModule
-  
-  // Font configuration - use Roboto fonts
-  const fonts: any = {}
-  
-  const robotoFonts = {
-    Roboto: {
-      normal: path.join(process.cwd(), 'node_modules/pdfmake/build/fonts/Roboto/Roboto-Regular.ttf'),
-      bold: path.join(process.cwd(), 'node_modules/pdfmake/build/fonts/Roboto/Roboto-Medium.ttf'),
-      italics: path.join(process.cwd(), 'node_modules/pdfmake/build/fonts/Roboto/Roboto-Italic.ttf'),
-      bolditalics: path.join(process.cwd(), 'node_modules/pdfmake/build/fonts/Roboto/Roboto-MediumItalic.ttf')
-    }
-  }
-  
-  // Add Roboto if fonts exist
-  if (fs.existsSync(robotoFonts.Roboto.normal)) {
-    fonts.Roboto = robotoFonts.Roboto
-  }
-  
-  try {
-    if (Object.keys(fonts).length > 0) {
-      return new PdfPrinter(fonts)
-    }
-    // Fallback to empty fonts
-    return new PdfPrinter({})
-  } catch (error) {
-    console.error('Error initializing PDFMake fonts:', error)
-    // Fallback to empty fonts
-    return new PdfPrinter({})
-  }
-}
+import { jsPDF } from 'jspdf'
 
 export async function GET(request: NextRequest) {
   try {
@@ -110,9 +71,7 @@ export async function GET(request: NextRequest) {
     // Helper function to safely format text
     const safeText = (text: any): string => {
       if (!text) return ''
-      // Ensure text is properly converted to string and trimmed
       let result = String(text).trim()
-      // Remove any null bytes or invalid characters that might break PDF rendering
       result = result.replace(/\0/g, '')
       return result
     }
@@ -136,766 +95,364 @@ export async function GET(request: NextRequest) {
     const reportTypeText = type === 'today' ? 'Today' : type === 'monthly' ? 'This Month' : 'This Year'
     const dateRange = `${new Date(startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} - ${new Date(endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`
 
-    // Build PDF document definition
-    const docDefinition: TDocumentDefinitions = {
-      pageSize: 'A4',
-      pageMargins: [15, 15, 15, 15],
-      defaultStyle: {
-        font: 'Roboto',
-        fontSize: 10,
-        color: '#333333',
-      },
-      content: [
-        // Header with gradient background effect
-        {
-          table: {
-            widths: ['*'],
-            body: [
-              [
-                {
-                  text: "Gurudatta trader's",
-                  fontSize: 24,
-                  bold: true,
-                  alignment: 'center',
-                  color: '#FFFFFF',
-                  fillColor: '#1e40af', // Blue background
-                  margin: [0, 10, 0, 10]
-                }
-              ],
-              [
-                {
-                  text: 'Sales Report',
-                  fontSize: 18,
-                  bold: true,
-                  alignment: 'center',
-                  color: '#FFFFFF',
-                  fillColor: '#3b82f6', // Lighter blue
-                  margin: [0, 5, 0, 5]
-                }
-              ]
-            ]
-          },
-          layout: 'noBorders',
-          margin: [0, 0, 0, 20]
-        },
-        
-        // Report Info Box with colors
-        {
-          table: {
-            widths: ['*'],
-            body: [
-              [
-                {
-                  text: [
-                    { text: 'Report Type: ', bold: true, color: '#FFFFFF' },
-                    { text: reportTypeText, color: '#FFFFFF' }
-                  ],
-                  border: [true, true, true, true],
-                  fillColor: '#1e40af' // Blue header
-                }
-              ],
-              ...(userId && bills[0]?.user ? [
-                [
-                  {
-                    text: [
-                      { text: 'Customer: ', bold: true, color: '#1f2937' },
-                      { 
-                        text: safeText(bills[0].user.name) || '[No Name]',
-                        color: '#1f2937'
-                      },
-                      { text: ' (' + bills[0].user.mobileNo + ')', color: '#6b7280' }
-                    ],
-                    border: [true, false, true, true],
-                    fillColor: '#f3f4f6' // Light gray
-                  }
-                ]
-              ] : []),
-              [
-                {
-                  text: [
-                    { text: 'Period: ', bold: true, color: '#1f2937' },
-                    { text: dateRange, color: '#1f2937' }
-                  ],
-                  border: [true, false, true, true],
-                  fillColor: '#ffffff'
-                }
-              ],
-              [
-                {
-                  text: [
-                    { text: 'Total Bills: ', bold: true, color: '#1f2937' },
-                    { text: bills.length.toString(), color: '#1f2937' }
-                  ],
-                  border: [true, false, true, true],
-                  fillColor: '#f3f4f6' // Light gray
-                }
-              ]
-            ]
-          },
-          layout: {
-            paddingLeft: () => 8,
-            paddingRight: () => 8,
-            paddingTop: () => 6,
-            paddingBottom: () => 6,
-            hLineWidth: () => 0,
-            vLineWidth: () => 0
-          },
-          margin: [0, 0, 0, 20]
-        },
+    // Create PDF document
+    const doc = new jsPDF()
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const pageHeight = doc.internal.pageSize.getHeight()
+    const margin = 15
+    let yPos = margin
 
-        // Summary Boxes with attractive colors
-        {
-          columns: [
-            {
-              table: {
-                widths: ['*'],
-                body: [
-                  [
-                    {
-                      text: 'Total Sales',
-                      fontSize: 10,
-                      bold: true,
-                      color: '#FFFFFF',
-                      border: [true, true, true, false],
-                      fillColor: '#10b981' // Green
-                    }
-                  ],
-                  [
-                    {
-                      text: 'Rs. ' + formatCurrency(totalSales),
-                      fontSize: 14,
-                      bold: true,
-                      color: '#1f2937',
-                      border: [true, false, true, true],
-                      fillColor: '#d1fae5' // Light green
-                    }
-                  ]
-                ]
-              },
-              layout: {
-                paddingLeft: () => 8,
-                paddingRight: () => 8,
-                paddingTop: () => 8,
-                paddingBottom: () => 8,
-                hLineWidth: () => 0,
-                vLineWidth: () => 0
-              },
-              width: '48%'
-            },
-            {
-              table: {
-                widths: ['*'],
-                body: [
-                  [
-                    {
-                      text: 'Total Paid',
-                      fontSize: 10,
-                      bold: true,
-                      color: '#FFFFFF',
-                      border: [true, true, true, false],
-                      fillColor: '#3b82f6' // Blue
-                    }
-                  ],
-                  [
-                    {
-                      text: 'Rs. ' + formatCurrency(totalPaid),
-                      fontSize: 14,
-                      bold: true,
-                      color: '#1f2937',
-                      border: [true, false, true, true],
-                      fillColor: '#dbeafe' // Light blue
-                    }
-                  ]
-                ]
-              },
-              layout: {
-                paddingLeft: () => 8,
-                paddingRight: () => 8,
-                paddingTop: () => 8,
-                paddingBottom: () => 8,
-                hLineWidth: () => 0,
-                vLineWidth: () => 0
-              },
-              width: '48%',
-              margin: [10, 0, 0, 0]
-            }
-          ],
-          margin: [0, 0, 0, 15]
-        },
-        {
-          columns: [
-            {
-              table: {
-                widths: ['*'],
-                body: [
-                  [
-                    {
-                      text: 'Total Pending',
-                      fontSize: 10,
-                      bold: true,
-                      color: '#FFFFFF',
-                      border: [true, true, true, false],
-                      fillColor: '#ef4444' // Red
-                    }
-                  ],
-                  [
-                    {
-                      text: 'Rs. ' + formatCurrency(totalPending),
-                      fontSize: 14,
-                      bold: true,
-                      color: '#1f2937',
-                      border: [true, false, true, true],
-                      fillColor: '#fee2e2' // Light red
-                    }
-                  ]
-                ]
-              },
-              layout: {
-                paddingLeft: () => 8,
-                paddingRight: () => 8,
-                paddingTop: () => 8,
-                paddingBottom: () => 8,
-                hLineWidth: () => 0,
-                vLineWidth: () => 0
-              },
-              width: '48%'
-            },
-            {
-              table: {
-                widths: ['*'],
-                body: [
-                  [
-                    {
-                      text: 'Payment Status',
-                      fontSize: 10,
-                      bold: true,
-                      color: '#FFFFFF',
-                      border: [true, true, true, false],
-                      fillColor: '#8b5cf6' // Purple
-                    }
-                  ],
-                  [
-                    {
-                      text: [
-                        { text: 'Paid: ', color: '#059669' },
-                        { text: paidBills.toString() + '\n', bold: true, color: '#1f2937' },
-                        { text: 'Partial: ', color: '#d97706' },
-                        { text: partialBills.toString() + '\n', bold: true, color: '#1f2937' },
-                        { text: 'Pending: ', color: '#dc2626' },
-                        { text: pendingBills.toString(), bold: true, color: '#1f2937' }
-                      ],
-                      fontSize: 9,
-                      border: [true, false, true, true],
-                      fillColor: '#f3e8ff' // Light purple
-                    }
-                  ]
-                ]
-              },
-              layout: {
-                paddingLeft: () => 8,
-                paddingRight: () => 8,
-                paddingTop: () => 8,
-                paddingBottom: () => 8,
-                hLineWidth: () => 0,
-                vLineWidth: () => 0
-              },
-              width: '48%',
-              margin: [10, 0, 0, 0]
-            }
-          ],
-          margin: [0, 0, 0, 20]
-        },
+    // Helper function to add text with word wrap
+    const addText = (text: string, x: number, y: number, options: any = {}) => {
+      const fontSize = options.fontSize || 10
+      const maxWidth = options.maxWidth || pageWidth - margin * 2
+      doc.setFontSize(fontSize)
+      if (options.bold) {
+        doc.setFont(undefined, 'bold')
+      } else {
+        doc.setFont(undefined, 'normal')
+      }
+      if (options.color) {
+        if (typeof options.color === 'string') {
+          // Convert hex to RGB
+          const hex = options.color.replace('#', '')
+          const r = parseInt(hex.substring(0, 2), 16)
+          const g = parseInt(hex.substring(2, 4), 16)
+          const b = parseInt(hex.substring(4, 6), 16)
+          doc.setTextColor(r, g, b)
+        } else if (Array.isArray(options.color)) {
+          doc.setTextColor(options.color[0], options.color[1], options.color[2])
+        }
+      }
+      const lines = doc.splitTextToSize(safeText(text), maxWidth)
+      const align = options.align || 'left'
+      if (align === 'center') {
+        doc.text(lines, x, y, { align: 'center' })
+      } else {
+        doc.text(lines, x, y)
+      }
+      return lines.length * fontSize * 0.4
+    }
 
-        // Bills Overview Table with colorful design
-        {
-          table: {
-            widths: ['*'],
-            body: [
-              [
-                {
-                  text: 'Bills Overview',
-                  fontSize: 14,
-                  bold: true,
-                  color: '#FFFFFF',
-                  fillColor: '#6366f1', // Indigo
-                  alignment: 'center',
-                  margin: [0, 5, 0, 5]
-                }
-              ]
-            ]
-          },
-          layout: 'noBorders',
-          margin: [0, 0, 0, 10]
-        },
-        {
-          table: {
-            headerRows: 1,
-            widths: [40, '*', 50, 50],
-            body: [
-              // Header row with gradient colors
-              [
-                {
-                  text: 'Bill Number',
-                  bold: true,
-                  fillColor: '#1e40af', // Blue
-                  color: '#FFFFFF',
-                  fontSize: 10
-                },
-                {
-                  text: 'Customer',
-                  bold: true,
-                  fillColor: '#1e40af',
-                  color: '#FFFFFF',
-                  fontSize: 10
-                },
-                {
-                  text: 'Date',
-                  bold: true,
-                  fillColor: '#1e40af',
-                  color: '#FFFFFF',
-                  fontSize: 10
-                },
-                {
-                  text: 'Amount',
-                  bold: true,
-                  fillColor: '#1e40af',
-                  color: '#FFFFFF',
-                  fontSize: 10
-                }
-              ],
-              // Data rows with alternating colors
-              ...bills.slice(0, 15).map((bill, index) => [
-                {
-                  text: bill.billNumber,
-                  fillColor: index % 2 === 0 ? '#f8fafc' : '#ffffff',
-                  color: '#1f2937',
-                  fontSize: 9
-                },
-                {
-                  text: safeText(bill.user.name) || '[No Name]',
-                  fillColor: index % 2 === 0 ? '#f8fafc' : '#ffffff',
-                  color: '#1f2937',
-                  fontSize: 9
-                },
-                {
-                  text: new Date(bill.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
-                  fillColor: index % 2 === 0 ? '#f8fafc' : '#ffffff',
-                  color: '#1f2937',
-                  fontSize: 9
-                },
-                {
-                  text: 'Rs. ' + formatCurrency(bill.totalAmount),
-                  fillColor: index % 2 === 0 ? '#f8fafc' : '#ffffff',
-                  color: '#059669',
-                  bold: true,
-                  fontSize: 9
-                }
-              ])
-            ]
-          },
-          layout: {
-            hLineWidth: () => 0.5,
-            vLineWidth: () => 0.5,
-            hLineColor: () => '#e5e7eb',
-            vLineColor: () => '#e5e7eb'
-          },
-          margin: [0, 0, 0, 15]
-        },
-        ...(bills.length > 15 ? [
-          {
-            text: `... and ${bills.length - 15} more bills (see detailed pages)`,
-            fontSize: 9,
-            italics: true,
-            margin: [0, 0, 0, 20]
-          }
-        ] : []),
+    // Helper function to add colored box
+    const addColoredBox = (text: string, x: number, y: number, width: number, height: number, bgColor: number[], textColor: number[] = [0, 0, 0], fontSize: number = 10) => {
+      doc.setFillColor(bgColor[0], bgColor[1], bgColor[2])
+      doc.rect(x, y - height, width, height, 'F')
+      doc.setTextColor(textColor[0], textColor[1], textColor[2])
+      addText(text, x + 2, y - height / 2 + fontSize / 3, { fontSize, bold: true })
+      doc.setTextColor(0, 0, 0)
+    }
 
-        // Individual Bill Details
-        ...bills.map((bill, billIndex) => {
+    // Header with colors
+      doc.setFillColor(30, 64, 175) // Blue
+      doc.rect(0, 0, pageWidth, 25, 'F')
+      doc.setTextColor(255, 255, 255)
+      addText("Gurudatta trader's", pageWidth / 2, 12, { fontSize: 20, bold: true, maxWidth: pageWidth - margin * 2, align: 'center' })
+      
+      doc.setFillColor(59, 130, 246) // Lighter blue
+      doc.rect(0, 25, pageWidth, 15, 'F')
+      addText('Sales Report', pageWidth / 2, 33, { fontSize: 16, bold: true, maxWidth: pageWidth - margin * 2, align: 'center' })
+      
+      doc.setTextColor(0, 0, 0)
+    yPos = 50
+
+    // Report Info Box
+    doc.setFillColor(30, 64, 175) // Blue header
+    doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
+    doc.setTextColor(255, 255, 255)
+    addText(`Report Type: ${reportTypeText}`, margin + 4, yPos + 5, { fontSize: 10, bold: true })
+    yPos += 10
+
+    if (userId && bills[0]?.user) {
+      doc.setFillColor(243, 244, 246) // Light gray
+      doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
+      doc.setTextColor(0, 0, 0)
+      addText(`Customer: ${safeText(bills[0].user.name)} (${bills[0].user.mobileNo})`, margin + 4, yPos + 5, { fontSize: 10 })
+      yPos += 10
+    }
+
+    doc.setFillColor(255, 255, 255)
+    doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
+    doc.setTextColor(0, 0, 0)
+    addText(`Period: ${dateRange}`, margin + 4, yPos + 5, { fontSize: 10 })
+    yPos += 10
+
+    doc.setFillColor(243, 244, 246) // Light gray
+    doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
+    addText(`Total Bills: ${bills.length}`, margin + 4, yPos + 5, { fontSize: 10 })
+    yPos += 15
+
+    // Summary Boxes with colors
+    const boxWidth = (pageWidth - margin * 3) / 2
+    const boxHeight = 20
+
+    // Total Sales - Green
+    doc.setFillColor(16, 185, 129) // Green
+    doc.rect(margin, yPos, boxWidth, boxHeight, 'F')
+      doc.setTextColor(255, 255, 255)
+    addText('Total Sales', margin + 4, yPos + 6, { fontSize: 10, bold: true })
+    doc.setFillColor(209, 250, 229) // Light green
+    doc.rect(margin, yPos + 8, boxWidth, 12, 'F')
+      doc.setTextColor(0, 0, 0)
+    addText(`Rs. ${formatCurrency(totalSales)}`, margin + 4, yPos + 16, { fontSize: 14, bold: true })
+
+    // Total Paid - Blue
+    doc.setFillColor(59, 130, 246) // Blue
+    doc.rect(margin * 2 + boxWidth, yPos, boxWidth, boxHeight, 'F')
+      doc.setTextColor(255, 255, 255)
+    addText('Total Paid', margin * 2 + boxWidth + 4, yPos + 6, { fontSize: 10, bold: true })
+    doc.setFillColor(219, 234, 254) // Light blue
+    doc.rect(margin * 2 + boxWidth, yPos + 8, boxWidth, 12, 'F')
+      doc.setTextColor(0, 0, 0)
+    addText(`Rs. ${formatCurrency(totalPaid)}`, margin * 2 + boxWidth + 4, yPos + 16, { fontSize: 14, bold: true })
+    yPos += 25
+
+    // Total Pending - Red
+    doc.setFillColor(239, 68, 68) // Red
+    doc.rect(margin, yPos, boxWidth, boxHeight, 'F')
+      doc.setTextColor(255, 255, 255)
+    addText('Total Pending', margin + 4, yPos + 6, { fontSize: 10, bold: true })
+    doc.setFillColor(254, 226, 226) // Light red
+    doc.rect(margin, yPos + 8, boxWidth, 12, 'F')
+      doc.setTextColor(0, 0, 0)
+    addText(`Rs. ${formatCurrency(totalPending)}`, margin + 4, yPos + 16, { fontSize: 14, bold: true })
+
+    // Payment Status - Purple
+    doc.setFillColor(139, 92, 246) // Purple
+    doc.rect(margin * 2 + boxWidth, yPos, boxWidth, boxHeight, 'F')
+      doc.setTextColor(255, 255, 255)
+    addText('Payment Status', margin * 2 + boxWidth + 4, yPos + 6, { fontSize: 10, bold: true })
+    doc.setFillColor(243, 232, 255) // Light purple
+    doc.rect(margin * 2 + boxWidth, yPos + 8, boxWidth, 12, 'F')
+      doc.setTextColor(0, 0, 0)
+    addText(`Paid: ${paidBills}`, margin * 2 + boxWidth + 4, yPos + 12, { fontSize: 9 })
+    addText(`Partial: ${partialBills}`, margin * 2 + boxWidth + 4, yPos + 16, { fontSize: 9 })
+    addText(`Pending: ${pendingBills}`, margin * 2 + boxWidth + 4, yPos + 20, { fontSize: 9 })
+    yPos += 30
+
+      // Bills Overview Table Header
+      doc.setFillColor(99, 102, 241) // Indigo
+      doc.rect(margin, yPos, pageWidth - margin * 2, 10, 'F')
+      doc.setTextColor(255, 255, 255)
+      addText('Bills Overview', pageWidth / 2, yPos + 6, { fontSize: 14, bold: true, maxWidth: pageWidth - margin * 2, align: 'center' })
+      yPos += 15
+
+      // Table Headers
+      doc.setFillColor(30, 64, 175) // Blue
+      doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
+      doc.setTextColor(255, 255, 255)
+    const colWidths = [40, (pageWidth - margin * 2 - 40) / 3, (pageWidth - margin * 2 - 40) / 3, (pageWidth - margin * 2 - 40) / 3]
+    let xPos = margin + 2
+    addText('Bill #', xPos, yPos + 5, { fontSize: 10, bold: true })
+    xPos += colWidths[0]
+    addText('Customer', xPos, yPos + 5, { fontSize: 10, bold: true })
+    xPos += colWidths[1]
+    addText('Date', xPos, yPos + 5, { fontSize: 10, bold: true })
+    xPos += colWidths[2]
+    addText('Amount', xPos, yPos + 5, { fontSize: 10, bold: true })
+    yPos += 10
+
+    // Table Rows (limit to 15 for overview)
+    bills.slice(0, 15).forEach((bill, index) => {
+      if (yPos > pageHeight - 30) {
+        doc.addPage()
+        yPos = margin
+      }
+        const bgColor = index % 2 === 0 ? [248, 250, 252] : [255, 255, 255]
+        doc.setFillColor(bgColor[0], bgColor[1], bgColor[2])
+        doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
+        doc.setTextColor(0, 0, 0)
+        xPos = margin + 2
+        addText(bill.billNumber, xPos, yPos + 5, { fontSize: 9 })
+        xPos += colWidths[0]
+        addText(safeText(bill.user.name) || '[No Name]', xPos, yPos + 5, { fontSize: 9 })
+        xPos += colWidths[1]
+        addText(new Date(bill.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }), xPos, yPos + 5, { fontSize: 9 })
+        xPos += colWidths[2]
+        doc.setTextColor(5, 150, 105) // Green for amount
+        addText(`Rs. ${formatCurrency(bill.totalAmount)}`, xPos, yPos + 5, { fontSize: 9, bold: true })
+        doc.setTextColor(0, 0, 0)
+      yPos += 8
+    })
+
+      if (bills.length > 15) {
+        yPos += 5
+        doc.setTextColor(102, 102, 102) // Gray
+        addText(`... and ${bills.length - 15} more bills (see detailed pages)`, margin, yPos, { fontSize: 9 })
+        doc.setTextColor(0, 0, 0)
+        yPos += 10
+      }
+
+    // Individual Bill Details
+    bills.forEach((bill, billIndex) => {
+      if (billIndex > 0 || yPos > pageHeight - 50) {
+        doc.addPage()
+        yPos = margin
+      }
+
+      // Bill Header with colors
+      doc.setFillColor(30, 64, 175) // Blue
+      doc.rect(0, 0, pageWidth, 25, 'F')
+      doc.setTextColor(255, 255, 255)
+      addText("Gurudatta trader's", pageWidth / 2, 12, { fontSize: 22, bold: true, maxWidth: pageWidth - margin * 2, align: 'center' })
+      
+      doc.setFillColor(59, 130, 246) // Lighter blue
+      doc.rect(0, 25, pageWidth, 15, 'F')
+      addText('Bill Invoice', pageWidth / 2, 33, { fontSize: 14, bold: true, maxWidth: pageWidth - margin * 2, align: 'center' })
+      
+      doc.setTextColor(0, 0, 0)
+      yPos = 50
+
+      // Bill Info
+      doc.setFillColor(99, 102, 241) // Indigo
+      doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
+      doc.setTextColor(255, 255, 255)
+      addText(`Bill Number: ${bill.billNumber}`, margin + 4, yPos + 5, { fontSize: 11, bold: true })
+      yPos += 10
+
+      doc.setFillColor(243, 244, 246) // Light gray
+      doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
+      doc.setTextColor(0, 0, 0)
       const billDate = new Date(bill.createdAt).toLocaleDateString('en-IN', { 
         year: 'numeric', 
         month: 'long', 
         day: 'numeric' 
       })
+      addText(`Date: ${billDate}`, margin + 4, yPos + 5, { fontSize: 10 })
+      yPos += 15
 
-          return [
-            // Page break before each bill (except first)
-            ...(billIndex > 0 ? [{ text: '', pageBreak: 'before' }] : [{ text: '', pageBreak: 'before' }]),
-            
-            // Bill Header with colors
-            {
-              table: {
-                widths: ['*'],
-                body: [
-                  [
-                    {
-                      text: "Gurudatta trader's",
-                      fontSize: 22,
-                      bold: true,
-                      alignment: 'center',
-                      color: '#FFFFFF',
-                      fillColor: '#1e40af',
-                      margin: [0, 10, 0, 10]
-                    }
-                  ],
-                  [
-                    {
-                      text: 'Bill Invoice',
-                      fontSize: 14,
-                      bold: true,
-                      alignment: 'center',
-                      color: '#FFFFFF',
-                      fillColor: '#3b82f6',
-                      margin: [0, 5, 0, 5]
-                    }
-                  ]
-                ]
-              },
-              layout: 'noBorders',
-              margin: [0, 0, 0, 15]
-            },
+      // Customer Information
+      doc.setFillColor(16, 185, 129) // Green
+      doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
+      doc.setTextColor(255, 255, 255)
+      addText('Customer Information', margin + 4, yPos + 5, { fontSize: 12, bold: true })
+      yPos += 10
 
-            // Bill Info with colors
-            {
-              table: {
-                widths: ['*'],
-                body: [
-                  [
-                    {
-                      text: [
-                        { text: 'Bill Number: ', bold: true, fontSize: 11, color: '#FFFFFF' },
-                        { text: bill.billNumber, fontSize: 11, color: '#FFFFFF' }
-                      ],
-                      border: [true, true, true, false],
-                      fillColor: '#6366f1' // Indigo
-                    }
-                  ],
-                  [
-                    {
-                      text: [
-                        { text: 'Date: ', bold: true, fontSize: 10, color: '#1f2937' },
-                        { text: billDate, fontSize: 10, color: '#1f2937' }
-                      ],
-                      border: [true, false, true, true],
-                      fillColor: '#f3f4f6' // Light gray
-                    }
-                  ]
-                ]
-              },
-              layout: {
-                paddingLeft: () => 8,
-                paddingRight: () => 8,
-                paddingTop: () => 6,
-                paddingBottom: () => 6,
-                hLineWidth: () => 0,
-                vLineWidth: () => 0
-              },
-              margin: [0, 0, 0, 15]
-            },
+      doc.setFillColor(255, 255, 255)
+      doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
+      doc.setTextColor(0, 0, 0)
+      addText(`Name: ${safeText(bill.user.name) || '[No Name]'}`, margin + 4, yPos + 5, { fontSize: 10 })
+      yPos += 10
 
-            // Customer Information with colors
-            {
-              table: {
-                widths: ['*'],
-                body: [
-                  [
-                    {
-                      text: 'Customer Information',
-                      bold: true,
-                      fontSize: 12,
-                      color: '#FFFFFF',
-                      border: [true, true, true, false],
-                      fillColor: '#10b981' // Green
-                    }
-                  ],
-                  [
-                    {
-                      text: [
-                        { text: 'Name: ', bold: true, color: '#1f2937' },
-                        { 
-                          text: safeText(bill.user.name) || '[No Name]',
-                          color: '#1f2937'
-                        }
-                      ],
-                      border: [true, false, true, false],
-                      fillColor: '#ffffff'
-                    }
-                  ],
-                  [
-                    {
-                      text: [
-                        { text: 'Mobile: ', bold: true, color: '#1f2937' },
-                        { text: bill.user.mobileNo, color: '#1f2937' }
-                      ],
-                      border: [true, false, true, false],
-                      fillColor: '#f3f4f6' // Light gray
-                    }
-                  ],
-                  ...(bill.user.address ? [
-                    [
-                      {
-                        text: [
-                          { text: 'Address: ', bold: true, color: '#1f2937' },
-                          { 
-                            text: safeText(bill.user.address) || '[No Address]',
-                            color: '#1f2937'
-                          }
-                        ],
-                        border: [true, false, true, true],
-                        fillColor: '#ffffff'
-                      }
-                    ]
-                  ] : [
-                    [
-                      {
-                        text: '',
-                        border: [true, false, true, true],
-                        fillColor: '#ffffff'
-                      }
-                    ]
-                  ])
-                ]
-              },
-              layout: {
-                paddingLeft: () => 8,
-                paddingRight: () => 8,
-                paddingTop: () => 6,
-                paddingBottom: () => 6,
-                hLineWidth: () => 0,
-                vLineWidth: () => 0
-              },
-              margin: [0, 0, 0, 15]
-            },
+      doc.setFillColor(243, 244, 246) // Light gray
+      doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
+      addText(`Mobile: ${bill.user.mobileNo}`, margin + 4, yPos + 5, { fontSize: 10 })
+      yPos += 10
 
-            // Items Table with colors
-            {
-              table: {
-                widths: ['*'],
-                body: [
-                  [
-                    {
-                      text: 'Items',
-                      fontSize: 12,
-                      bold: true,
-                      color: '#FFFFFF',
-                      fillColor: '#8b5cf6', // Purple
-                      alignment: 'center',
-                      margin: [0, 5, 0, 5]
-                    }
-                  ]
-                ]
-              },
-              layout: 'noBorders',
-              margin: [0, 0, 0, 8]
-            },
-            {
-              table: {
-                headerRows: 1,
-                widths: ['*', 50, 40, 50, 50],
-                body: [
-                  // Header with colors
-                  [
-                    {
-                      text: 'Feed Name',
-                      bold: true,
-                      fillColor: '#1e40af', // Blue
-                      color: '#FFFFFF',
-                      fontSize: 10
-                    },
-                    {
-                      text: 'Weight',
-                      bold: true,
-                      fillColor: '#1e40af',
-                      color: '#FFFFFF',
-                      fontSize: 10
-                    },
-                    {
-                      text: 'Qty',
-                      bold: true,
-                      fillColor: '#1e40af',
-                      color: '#FFFFFF',
-                      fontSize: 10
-                    },
-                    {
-                      text: 'Unit Price',
-                      bold: true,
-                      fillColor: '#1e40af',
-                      color: '#FFFFFF',
-                      fontSize: 10
-                    },
-                    {
-                      text: 'Total',
-                      bold: true,
-                      fillColor: '#1e40af',
-                      color: '#FFFFFF',
-                      fontSize: 10,
-                      alignment: 'right'
-                    }
-                  ],
-                  // Items with alternating colors
-                  ...bill.items.map((item, itemIndex) => [
-                    {
-                      text: safeText(item.feed.name),
-                      fillColor: itemIndex % 2 === 0 ? '#f8fafc' : '#ffffff',
-                      color: '#1f2937',
-                      fontSize: 9
-                    },
-                    {
-                      text: `${item.feed.weight} kg`,
-                      fillColor: itemIndex % 2 === 0 ? '#f8fafc' : '#ffffff',
-                      color: '#1f2937',
-                      fontSize: 9
-                    },
-                    {
-                      text: item.quantity.toFixed(0),
-                      fillColor: itemIndex % 2 === 0 ? '#f8fafc' : '#ffffff',
-                      color: '#1f2937',
-                      fontSize: 9
-                    },
-                    {
-                      text: 'Rs. ' + parseFloat(item.unitPrice.toString()).toFixed(2),
-                      fillColor: itemIndex % 2 === 0 ? '#f8fafc' : '#ffffff',
-                      color: '#1f2937',
-                      fontSize: 9
-                    },
-                    {
-                      text: 'Rs. ' + parseFloat(item.totalPrice.toString()).toFixed(2),
-                      fillColor: itemIndex % 2 === 0 ? '#f8fafc' : '#ffffff',
-                      color: '#059669',
-                      bold: true,
-                      fontSize: 9,
-                      alignment: 'right'
-                    }
-                  ])
-                ]
-              },
-              layout: {
-                hLineWidth: () => 0.5,
-                vLineWidth: () => 0.5,
-                hLineColor: () => '#e5e7eb',
-                vLineColor: () => '#e5e7eb'
-              },
-              margin: [0, 0, 0, 15]
-            },
-
-            // Summary with colors - conditionally show Paid and Pending amounts, positioned on right side
-            {
-              columns: [
-                { text: '', width: '*' }, // Spacer to push summary to right
-                {
-                  width: 120,
-                  table: {
-                    widths: [120],
-                    body: [
-                      [
-                        {
-                          text: 'Summary',
-                          bold: true,
-                          fontSize: 12,
-                          color: '#FFFFFF',
-                          border: [true, true, true, false],
-                          fillColor: '#6366f1' // Indigo
-                        }
-                      ],
-                      [
-                        {
-                          text: [
-                            { text: 'Total Amount: ', fontSize: 10, color: '#1f2937' },
-                            { text: 'Rs. ' + parseFloat(bill.totalAmount.toString()).toFixed(2), bold: true, fontSize: 10, color: '#059669' }
-                          ],
-                          alignment: 'right',
-                          border: [true, false, true, parseFloat(bill.paidAmount.toString()) === 0 && parseFloat(bill.pendingAmount.toString()) === 0 ? true : false],
-                          fillColor: '#ffffff'
-                        }
-                      ],
-                      // Only show Paid Amount if it's greater than 0
-                      ...(parseFloat(bill.paidAmount.toString()) > 0 ? [
-                        [
-                          {
-                            text: [
-                              { text: 'Paid Amount: ', fontSize: 10, color: '#1f2937' },
-                              { text: 'Rs. ' + parseFloat(bill.paidAmount.toString()).toFixed(2), bold: true, fontSize: 10, color: '#3b82f6' }
-                            ],
-                            alignment: 'right',
-                            border: [true, false, true, parseFloat(bill.pendingAmount.toString()) === 0 ? true : false],
-                            fillColor: '#f3f4f6' // Light gray
-                          }
-                        ]
-                      ] : []),
-                      // Only show Pending Amount if it's greater than 0
-                      ...(parseFloat(bill.pendingAmount.toString()) > 0 ? [
-                        [
-                          {
-                            text: [
-                              { text: 'Pending: ', fontSize: 10, color: '#1f2937' },
-                              { text: 'Rs. ' + parseFloat(bill.pendingAmount.toString()).toFixed(2), bold: true, fontSize: 10, color: '#ef4444' }
-                            ],
-                            alignment: 'right',
-                            border: [true, false, true, true],
-                            fillColor: '#ffffff'
-                          }
-                        ]
-                      ] : [])
-                    ]
-                  },
-                  layout: {
-                    paddingLeft: () => 8,
-                    paddingRight: () => 8,
-                    paddingTop: () => 6,
-                    paddingBottom: () => 6,
-                    hLineWidth: () => 0,
-                    vLineWidth: () => 0
-                  }
-                }
-              ],
-              margin: [0, 0, 0, 15]
-            },
-
-          ]
-        }).flat()
-      ],
-      styles: {
-        header: {
-          fontSize: 20,
-          bold: true,
-          color: '#000000'
-        }
+      if (bill.user.address) {
+        doc.setFillColor(255, 255, 255)
+        doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
+        addText(`Address: ${safeText(bill.user.address)}`, margin + 4, yPos + 5, { fontSize: 10 })
+        yPos += 10
       }
-    }
+      yPos += 5
 
-    // Generate PDF with Unicode support
-    const printer = getPdfPrinter()
-    // createPdfKitDocument is async, so we need to await it
-    const pdfDoc = await printer.createPdfKitDocument(docDefinition)
-    
-    // Convert to buffer
-    const chunks: Buffer[] = []
-    pdfDoc.on('data', (chunk: Buffer) => chunks.push(chunk))
-    
-    return new Promise<NextResponse>((resolve, reject) => {
-      pdfDoc.on('end', () => {
-        const pdfBuffer = Buffer.concat(chunks)
-        resolve(
-          new NextResponse(pdfBuffer, {
+      // Items Table Header
+      doc.setFillColor(139, 92, 246) // Purple
+      doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
+      doc.setTextColor(255, 255, 255)
+      addText('Items', pageWidth / 2, yPos + 5, { fontSize: 12, bold: true, maxWidth: pageWidth - margin * 2, align: 'center' })
+      yPos += 10
+
+      // Items Table Headers
+      doc.setFillColor(30, 64, 175) // Blue
+      doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
+      doc.setTextColor(255, 255, 255)
+      const itemColWidths = [
+        (pageWidth - margin * 2) * 0.4,
+        (pageWidth - margin * 2) * 0.15,
+        (pageWidth - margin * 2) * 0.15,
+        (pageWidth - margin * 2) * 0.15,
+        (pageWidth - margin * 2) * 0.15
+      ]
+      xPos = margin + 2
+      addText('Feed Name', xPos, yPos + 5, { fontSize: 10, bold: true })
+      xPos += itemColWidths[0]
+      addText('Weight', xPos, yPos + 5, { fontSize: 10, bold: true })
+      xPos += itemColWidths[1]
+      addText('Qty', xPos, yPos + 5, { fontSize: 10, bold: true })
+      xPos += itemColWidths[2]
+      addText('Unit Price', xPos, yPos + 5, { fontSize: 10, bold: true })
+      xPos += itemColWidths[3]
+      addText('Total', xPos, yPos + 5, { fontSize: 10, bold: true })
+      yPos += 10
+
+      // Items Rows
+      bill.items.forEach((item, itemIndex) => {
+        if (yPos > pageHeight - 30) {
+          doc.addPage()
+          yPos = margin
+        }
+        const bgColor = itemIndex % 2 === 0 ? [248, 250, 252] : [255, 255, 255]
+        doc.setFillColor(bgColor[0], bgColor[1], bgColor[2])
+        doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
+        doc.setTextColor(0, 0, 0)
+        xPos = margin + 2
+        addText(safeText(item.feed.name), xPos, yPos + 5, { fontSize: 9 })
+        xPos += itemColWidths[0]
+        addText(`${item.feed.weight} kg`, xPos, yPos + 5, { fontSize: 9 })
+        xPos += itemColWidths[1]
+        addText(item.quantity.toFixed(0), xPos, yPos + 5, { fontSize: 9 })
+        xPos += itemColWidths[2]
+        addText(`Rs. ${parseFloat(item.unitPrice.toString()).toFixed(2)}`, xPos, yPos + 5, { fontSize: 9 })
+        xPos += itemColWidths[3]
+        doc.setTextColor(5, 150, 105) // Green for total
+        addText(`Rs. ${parseFloat(item.totalPrice.toString()).toFixed(2)}`, xPos, yPos + 5, { fontSize: 9, bold: true })
+        doc.setTextColor(0, 0, 0)
+        yPos += 8
+      })
+      yPos += 5
+
+      // Summary - Right aligned
+      const summaryWidth = 85
+      const summaryX = pageWidth - margin - summaryWidth
+      
+      doc.setFillColor(99, 102, 241) // Indigo
+      doc.rect(summaryX, yPos, summaryWidth, 8, 'F')
+      doc.setTextColor(255, 255, 255)
+      addText('Summary', summaryX + summaryWidth / 2, yPos + 5, { fontSize: 12, bold: true, maxWidth: summaryWidth, align: 'center' })
+      yPos += 10
+
+      doc.setFillColor(255, 255, 255)
+      doc.rect(summaryX, yPos, summaryWidth, 8, 'F')
+      doc.setTextColor(0, 0, 0)
+      addText(`Total Amount: Rs. ${parseFloat(bill.totalAmount.toString()).toFixed(2)}`, summaryX + 2, yPos + 5, { fontSize: 10 })
+      doc.setTextColor(5, 150, 105) // Green
+      addText(`Rs. ${parseFloat(bill.totalAmount.toString()).toFixed(2)}`, summaryX + summaryWidth - 2, yPos + 5, { fontSize: 10, bold: true })
+      doc.setTextColor(0, 0, 0)
+      yPos += 10
+
+      // Only show Paid Amount if > 0
+      if (parseFloat(bill.paidAmount.toString()) > 0) {
+        doc.setFillColor(243, 244, 246) // Light gray
+        doc.rect(summaryX, yPos, summaryWidth, 8, 'F')
+        addText(`Paid Amount: Rs. ${parseFloat(bill.paidAmount.toString()).toFixed(2)}`, summaryX + 2, yPos + 5, { fontSize: 10 })
+        doc.setTextColor(59, 130, 246) // Blue
+        addText(`Rs. ${parseFloat(bill.paidAmount.toString()).toFixed(2)}`, summaryX + summaryWidth - 2, yPos + 5, { fontSize: 10, bold: true })
+        doc.setTextColor(0, 0, 0)
+        yPos += 10
+      }
+
+      // Only show Pending Amount if > 0
+      if (parseFloat(bill.pendingAmount.toString()) > 0) {
+        doc.setFillColor(255, 255, 255)
+        doc.rect(summaryX, yPos, summaryWidth, 8, 'F')
+        addText(`Pending: Rs. ${parseFloat(bill.pendingAmount.toString()).toFixed(2)}`, summaryX + 2, yPos + 5, { fontSize: 10 })
+        doc.setTextColor(239, 68, 68) // Red
+        addText(`Rs. ${parseFloat(bill.pendingAmount.toString()).toFixed(2)}`, summaryX + summaryWidth - 2, yPos + 5, { fontSize: 10, bold: true })
+        doc.setTextColor(0, 0, 0)
+        yPos += 10
+      }
+    })
+
+    // Generate PDF buffer
+    const pdfBuffer = Buffer.from(doc.output('arraybuffer'))
+
+    return new NextResponse(pdfBuffer, {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="sales-report-${type}-${Date.now()}.pdf"`,
       },
-          })
-        )
-      })
-      
-      pdfDoc.on('error', (error: Error) => {
-        console.error('PDF generation error:', error)
-        reject(
-          NextResponse.json(
-            { error: 'Failed to generate PDF', details: error.message },
-            { status: 500 }
-          )
-        )
-      })
-      
-      pdfDoc.end()
     })
   } catch (error: any) {
     if (error.status === 401) {
