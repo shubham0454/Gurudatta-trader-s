@@ -8,8 +8,14 @@ export const loginSchema = z.object({
 export const userSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   mobileNo: z.string().min(10, 'Mobile number must be at least 10 digits').max(15),
-  address: z.string().optional(),
-  email: z.string().email('Invalid email').optional().or(z.literal('')),
+  address: z.string().optional().nullable(),
+  email: z.preprocess(
+    (val) => val === null || val === undefined ? '' : val,
+    z.union([
+      z.string().email('Invalid email'),
+      z.literal('')
+    ]).optional()
+  ),
   userCode: z.string().optional(), // Auto-generated if not provided
   userType: z.enum(['BMC', 'Dabhadi', 'Customer']).default('BMC'),
   status: z.enum(['active', 'inactive']).default('active'),
@@ -20,13 +26,16 @@ export const feedSchema = z.object({
   brand: z.string().optional(),
   weight: z.number().positive('Weight must be positive'),
   defaultPrice: z.number().nonnegative('Price must be non-negative'),
-  stock: z.number().nonnegative('Stock must be non-negative').default(0),
+  stock: z.number().nonnegative('Stock must be non-negative').default(0), // deprecated
+  shopStock: z.number().nonnegative('Shop stock must be non-negative').default(0),
+  godownStock: z.number().nonnegative('Godown stock must be non-negative').default(0),
 })
 
 export const billItemSchema = z.object({
   feedId: z.string().min(1, 'Feed is required'),
   quantity: z.number().positive('Quantity must be positive'),
   unitPrice: z.number().nonnegative('Unit price must be non-negative'),
+  storageLocation: z.string().min(1, 'Storage location is required').default('godown'), // shop, godown, or custom
 })
 
 export const billSchema = z.object({

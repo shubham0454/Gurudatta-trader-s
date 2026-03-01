@@ -15,7 +15,6 @@
     "seed:data": "ts-node scripts/seed-dummy-data.ts",
     "seed:dabhadi": "ts-node scripts/seed-dabhadi-users.ts",
     "seed:bmc": "ts-node scripts/seed-bmc-users.ts",
-    "update:users-active": "ts-node scripts/update-all-users-active.ts",
     "clear:db": "ts-node scripts/clear-database.ts",
     "test:api": "node scripts/test-apis-simple.js",
     "setup:env": "node scripts/setup-env.js",

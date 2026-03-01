@@ -46,6 +46,7 @@ export default function BillDetailPage() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paymentDescription, setPaymentDescription] = useState('')
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -75,8 +76,13 @@ export default function BillDetailPage() {
       })
       const data = await response.json()
       setBill(data.bill)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching bill:', error)
+      if (error.name === 'NetworkError' || error.message?.includes('Network Error')) {
+        showToast('Network Error: No internet connection. Please check your connection and try again.', 'error')
+      } else {
+        showToast('Failed to load bill. Please try again.', 'error')
+      }
     } finally {
       setLoading(false)
     }
@@ -109,9 +115,13 @@ export default function BillDetailPage() {
         const error = await response.json()
         showToast(error.error || 'Failed to process payment', 'error')
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error processing payment:', error)
-      showToast('An error occurred', 'error')
+      if (error.name === 'NetworkError' || error.message?.includes('Network Error')) {
+        showToast('Network Error: No internet connection. Please check your connection and try again.', 'error')
+      } else {
+        showToast('An error occurred. Please try again.', 'error')
+      }
     }
   }
 
@@ -213,39 +223,53 @@ export default function BillDetailPage() {
       addText("Gurudatta trader's", pageWidth / 2, 20, { fontSize: 20, fontStyle: 'bold', align: 'center', color: [0, 0, 0] })
       addText("Bill Invoice", pageWidth / 2, 30, { fontSize: 12, align: 'center', color: [0, 0, 0] })
       
-      yPos = 45
+      yPos = 42
 
       // Bill Number and Date Section
       addText(`Bill Number: ${bill.billNumber}`, margin, yPos, { fontSize: 12, fontStyle: 'bold' })
-      yPos += 7
+      yPos += 6
       addText(`Date: ${new Date(bill.createdAt).toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })}`, margin, yPos, { fontSize: 10 })
-      yPos += 10
+      yPos += 8
 
-      // Customer Information Box - Simple white with black border
+      // Customer Information Box - Calculate height first, then draw
+      const customerBoxStartY = yPos
+      let tempY = yPos + 8 // Title space
+      tempY += 5 // Name
+      tempY += 5 // Mobile
+      if (bill.user.address) {
+        const addressText = `Address: ${sanitizeText(bill.user.address)}`
+        const addressLines = doc.splitTextToSize(addressText, pageWidth - margin * 2 - 6)
+        tempY += addressLines.length * 5
+      }
+      const customerBoxHeight = (tempY - customerBoxStartY) + 4
+      
+      // Draw box first
       doc.setFillColor(255, 255, 255) // White background
-      doc.rect(margin, yPos, pageWidth - margin * 2, 35, 'F')
+      doc.rect(margin, customerBoxStartY, pageWidth - margin * 2, customerBoxHeight, 'F')
       doc.setDrawColor(0, 0, 0) // Black border
       doc.setLineWidth(0.5)
-      doc.rect(margin, yPos, pageWidth - margin * 2, 35, 'S')
+      doc.rect(margin, customerBoxStartY, pageWidth - margin * 2, customerBoxHeight, 'S')
       doc.setLineWidth(0.2) // Reset
       
-      addText("Customer Information", margin + 3, yPos + 7, { fontSize: 11, fontStyle: 'bold' })
-      yPos += 10
+      // Now draw text on top
+      yPos = customerBoxStartY
+      addText("Customer Information", margin + 3, yPos + 6, { fontSize: 11, fontStyle: 'bold' })
+      yPos += 8
       addText(`Name: ${sanitizeText(bill.user.name)}`, margin + 3, yPos, { fontSize: 10 })
-      yPos += 6
+      yPos += 5
       addText(`Mobile: ${bill.user.mobileNo}`, margin + 3, yPos, { fontSize: 10 })
-      yPos += 6
+      yPos += 5
       if (bill.user.address) {
         const addressText = `Address: ${sanitizeText(bill.user.address)}`
         const addressLines = doc.splitTextToSize(addressText, pageWidth - margin * 2 - 6)
         doc.text(addressLines, margin + 3, yPos)
         yPos += addressLines.length * 5
       }
-      yPos += 10
+      yPos += 6
 
       // Items Table Header
       addText("Items", margin, yPos, { fontSize: 11, fontStyle: 'bold' })
-      yPos += 7
+      yPos += 6
 
       // Table Header Background - Simple black
       doc.setFillColor(0, 0, 0) // Black background
@@ -285,45 +309,74 @@ export default function BillDetailPage() {
         addLine(margin, yPos, pageWidth - margin, yPos, [200, 200, 200])
       })
 
-      yPos += 10
+      // ============================================
+      // SUMMARY SECTION - COMPLETELY NEW APPROACH
+      // Single line per item to prevent duplication
+      // ============================================
+      yPos += 12 // Reduced spacing before summary
+      
+      // Check page space
+      if (yPos + 45 > pageHeight - 15) {
+        doc.addPage()
+        yPos = margin + 10
+      }
 
-      // Summary Section
-      const summaryX = pageWidth - margin - 80
-      const summaryWidth = 80
-      const summaryBoxHeight = 40 // Increased height to fit all content
-
-      // Summary Box - Simple white background with border
-      doc.setFillColor(255, 255, 255) // White
-      doc.rect(summaryX, yPos, summaryWidth, summaryBoxHeight, 'F')
-      doc.setDrawColor(0, 0, 0) // Black border
+      // Summary position - Right aligned
+      const summaryX = pageWidth - margin - 65
+      const summaryWidth = 60
+      const summaryY = yPos
+      
+      // Calculate rows needed
+      let rowCount = 1 // Total always shown
+      if (bill.paidAmount > 0) rowCount++
+      if (bill.pendingAmount > 0) rowCount++
+      const boxHeight = 8 + (rowCount * 7) + 8
+      
+      // Draw box
+      doc.setFillColor(250, 250, 250)
+      doc.rect(summaryX, summaryY, summaryWidth, boxHeight, 'F')
+      doc.setDrawColor(0, 0, 0)
       doc.setLineWidth(0.5)
-      doc.rect(summaryX, yPos, summaryWidth, summaryBoxHeight, 'S')
-      doc.setLineWidth(0.2) // Reset
-
-      addText("Summary", summaryX + 3, yPos + 7, { fontSize: 11, fontStyle: 'bold' })
-      yPos += 10
-
-      doc.setTextColor(0, 0, 0) // Black
-      addText("Total Amount:", summaryX + 3, yPos, { fontSize: 10 })
-      addText(`₹${bill.totalAmount.toFixed(2)}`, summaryX + summaryWidth - 3, yPos, { fontSize: 10, align: 'right', fontStyle: 'bold' })
-      yPos += 7
-
-      addText("Paid Amount:", summaryX + 3, yPos, { fontSize: 10 })
-      addText(`₹${bill.paidAmount.toFixed(2)}`, summaryX + summaryWidth - 3, yPos, { fontSize: 10, align: 'right', fontStyle: 'bold' })
-      yPos += 7
-
-      addText("Pending Amount:", summaryX + 3, yPos, { fontSize: 10 })
-      addText(`₹${bill.pendingAmount.toFixed(2)}`, summaryX + summaryWidth - 3, yPos, { fontSize: 10, align: 'right', fontStyle: 'bold' })
-      yPos += 7
-
-      // Status Badge - Simple black border
-      doc.setDrawColor(0, 0, 0)
-      doc.setFillColor(240, 240, 240) // Light gray
-      doc.roundedRect(summaryX + 3, yPos, 30, 6, 2, 2, 'F')
-      doc.setDrawColor(0, 0, 0)
-      doc.roundedRect(summaryX + 3, yPos, 30, 6, 2, 2, 'S')
-      doc.setTextColor(0, 0, 0) // Black text
-      addText(bill.status.toUpperCase(), summaryX + 18, yPos + 4.5, { fontSize: 8, fontStyle: 'bold', align: 'center' })
+      doc.rect(summaryX, summaryY, summaryWidth, boxHeight, 'S')
+      
+      // Title - ONE TIME ONLY
+      doc.setTextColor(0, 0, 0)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(10)
+      doc.text("Summary", summaryX + 3, summaryY + 6)
+      
+      // Build complete text strings - ONE per line, NO separate calls
+      let currentY = summaryY + 10
+      const lineHeight = 7
+      
+      // Paid Amount - Single line with label and amount together
+      if (bill.paidAmount > 0) {
+        const paidText = `Paid Amount: ₹${bill.paidAmount.toFixed(2)}`
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(9)
+        doc.setTextColor(0, 0, 0)
+        doc.text(paidText, summaryX + 3, currentY)
+        currentY += lineHeight
+      }
+      
+      // Pending Amount - Single line
+      if (bill.pendingAmount > 0) {
+        const pendingText = `Pending Amount: ₹${bill.pendingAmount.toFixed(2)}`
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(9)
+        doc.setTextColor(0, 0, 0)
+        doc.text(pendingText, summaryX + 3, currentY)
+        currentY += lineHeight
+      }
+      
+      // Total Amount - Single line, bold
+      const totalText = `Total Amount: ₹${bill.totalAmount.toFixed(2)}`
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(9)
+      doc.setTextColor(0, 0, 0)
+      doc.text(totalText, summaryX + 3, currentY)
+      
+      yPos = currentY + 10
 
       // Footer
       yPos = pageHeight - 15
@@ -518,11 +571,114 @@ export default function BillDetailPage() {
             padding: 15px !important;
             border: 1px solid #ddd !important;
             border-radius: 4px !important;
+            clear: both !important;
+            page-break-inside: avoid !important;
+            margin-top: 20px !important;
           }
           
-          .print-summary-row {
-            padding: 6px 0 !important;
-            font-size: 12px !important;
+          .print-summary-content {
+            width: 100% !important;
+            max-width: 320px !important;
+            background: #f5f5f5 !important;
+            padding: 15px !important;
+            border: 1px solid #ddd !important;
+          }
+          
+          .print-summary-content h3 {
+            margin-bottom: 15px !important;
+            font-size: 16px !important;
+            font-weight: bold !important;
+            color: #000 !important;
+            padding-bottom: 10px !important;
+            border-bottom: 2px solid #000 !important;
+          }
+          
+          /* Summary content container - single rule */
+          .print-summary-content > div {
+            display: block !important;
+            width: 100% !important;
+          }
+          
+          .print-summary-content > div > div {
+            position: relative !important;
+            display: flex !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            padding: 10px 0 !important;
+            font-size: 13px !important;
+            border-bottom: 1px solid #ddd !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+          }
+          
+          .print-summary-content > div > div:last-child {
+            border-bottom: none !important;
+          }
+          
+          .print-summary-content span {
+            display: inline-block !important;
+            white-space: nowrap !important;
+            position: relative !important;
+            z-index: 1 !important;
+            box-sizing: border-box !important;
+          }
+          
+          .print-summary-content .text-slate-300 {
+            color: #333 !important;
+            flex: 0 1 auto !important;
+            min-width: 0 !important;
+          }
+          
+          .print-summary-content .font-bold {
+            font-weight: 700 !important;
+            flex: 0 0 auto !important;
+            margin-left: 15px !important;
+            color: #000 !important;
+            text-align: right !important;
+          }
+          
+          .print-summary-content .text-white {
+            color: #000 !important;
+          }
+          
+          .print-summary-content .text-green-400 {
+            color: #16a34a !important;
+          }
+          
+          .print-summary-content .text-red-400 {
+            color: #dc2626 !important;
+          }
+          
+          /* CRITICAL: Remove ALL pseudo-elements that might duplicate content */
+          .print-summary-content::before,
+          .print-summary-content::after,
+          .print-summary-content *::before,
+          .print-summary-content *::after {
+            display: none !important;
+            visibility: hidden !important;
+            content: none !important;
+            opacity: 0 !important;
+          }
+          
+          /* Prevent any text duplication */
+          .print-summary-content {
+            position: relative !important;
+            z-index: 1 !important;
+            overflow: visible !important;
+          }
+          
+          /* Ensure each row is unique - no counters or duplication */
+          .print-summary-content > div > div {
+            counter-increment: none !important;
+            counter-reset: none !important;
+            background: transparent !important;
+          }
+          
+          /* Prevent any CSS content duplication */
+          .print-summary-content > div > div::before,
+          .print-summary-content > div > div::after {
+            display: none !important;
+            content: none !important;
           }
           
           /* Status badge */
@@ -626,6 +782,43 @@ export default function BillDetailPage() {
               📄 Download PDF
             </button> */}
             <button
+              onClick={async () => {
+                if (!confirm('Are you sure you want to delete this bill? Stock will be restored.')) {
+                  return
+                }
+                setIsDeleting(true)
+                try {
+                  const token = localStorage.getItem('token')
+                  const response = await apiRequest(`/api/bills/${params.id}`, {
+                    method: 'DELETE',
+                    headers: {
+                      Authorization: `Bearer ${token}`,
+                    },
+                  })
+                  if (response.ok) {
+                    showToast('Bill deleted successfully. Stock has been restored.', 'success')
+                    router.push('/bills')
+                  } else {
+                    const error = await response.json()
+                    showToast(error.error || 'Failed to delete bill', 'error')
+                  }
+                } catch (error: any) {
+                  console.error('Error deleting bill:', error)
+                  if (error.name === 'NetworkError' || error.message?.includes('Network Error')) {
+                    showToast('Network Error: No internet connection. Please check your connection and try again.', 'error')
+                  } else {
+                    showToast('An error occurred while deleting the bill. Please try again.', 'error')
+                  }
+                } finally {
+                  setIsDeleting(false)
+                }
+              }}
+              disabled={isDeleting}
+              className="px-3 sm:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
+            >
+              {isDeleting ? 'Deleting...' : '🗑️ Delete'}
+            </button>
+            <button
               onClick={() => router.back()}
               className="px-3 sm:px-4 py-2 border border-slate-600 rounded-lg text-slate-300 hover:bg-slate-700 text-sm sm:text-base"
             >
@@ -635,8 +828,8 @@ export default function BillDetailPage() {
         </div>
 
         {/* Bill Details */}
-        <div className="bg-slate-800 rounded-lg shadow-lg p-4 sm:p-6 border border-slate-700">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
+        <div className="bg-slate-800 rounded-lg shadow-lg p-4 sm:p-6 border border-slate-700 print-bill">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
             <div>
               <h2 className="text-base sm:text-lg font-semibold text-white mb-4">Bill Information</h2>
               <div className="space-y-2">
@@ -688,7 +881,7 @@ export default function BillDetailPage() {
           </div>
 
           {/* Items */}
-          <div className="mb-4 sm:mb-6">
+          <div className="mb-6 sm:mb-8">
             <h2 className="text-base sm:text-lg font-semibold text-white mb-4">Items</h2>
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -718,21 +911,31 @@ export default function BillDetailPage() {
             </div>
           </div>
 
-          {/* Summary */}
-          <div className="border-t border-slate-700 pt-4 print-summary">
-            <div className="flex justify-end">
-              <div className="w-full sm:w-64 space-y-2 print-summary-content">
-                <div className="flex justify-between text-sm print-summary-row">
-                  <span className="text-slate-400">Total Amount:</span>
-                  <span className="font-medium text-white">₹{bill.totalAmount.toFixed(2)}</span>
+          {/* Summary - Order: Paid (1st) -> Pending (2nd) -> Total (3rd) */}
+          <div className="mt-8 pt-6 border-t border-slate-700 print-summary">
+            <div className="flex justify-end w-full">
+              <div className="w-full sm:w-80 bg-slate-700/50 rounded-lg p-5 print-summary-content">
+                <h3 className="text-lg font-bold text-white mb-4 pb-2 border-b border-slate-600">Summary</h3>
+                <div className="space-y-4">
+                  {/* 1. Paid Amount - FIRST (only if > 0) */}
+                  {bill.paidAmount > 0 && (
+                    <div className="flex justify-between items-center text-base w-full">
+                      <span className="text-slate-300 font-medium flex-shrink-0">Paid Amount:</span>
+                      <span className="font-bold text-green-400 text-lg flex-shrink-0 ml-4">₹{bill.paidAmount.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-sm print-summary-row">
-                  <span className="text-slate-400">Paid Amount:</span>
-                  <span className="font-medium text-green-400">₹{bill.paidAmount.toFixed(2)}</span>
+                  )}
+                  {/* 2. Pending Amount - SECOND (only if > 0) */}
+                  {bill.pendingAmount > 0 && (
+                    <div className="flex justify-between items-center text-base w-full">
+                      <span className="text-slate-300 font-medium flex-shrink-0">Pending Amount:</span>
+                      <span className="font-bold text-red-400 text-lg flex-shrink-0 ml-4">₹{bill.pendingAmount.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-sm print-summary-row">
-                  <span className="text-slate-400">Pending Amount:</span>
-                  <span className="font-medium text-amber-400">₹{bill.pendingAmount.toFixed(2)}</span>
+                  )}
+                  {/* 3. Total Amount - LAST (always shown) */}
+                  <div className="flex justify-between items-center text-base w-full">
+                    <span className="text-slate-300 font-medium flex-shrink-0">Total Amount:</span>
+                    <span className="font-bold text-white text-lg flex-shrink-0 ml-4">₹{bill.totalAmount.toFixed(2)}</span>
+                  </div>
                 </div>
               </div>
             </div>

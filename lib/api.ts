@@ -1,5 +1,13 @@
 import { getCached, setCached, invalidateCache } from './cache'
 
+// Custom error class for network errors
+export class NetworkError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'NetworkError'
+  }
+}
+
 export async function apiRequest(
   endpoint: string,
   options: RequestInit = {},
@@ -27,6 +35,7 @@ export async function apiRequest(
     (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`
   }
 
+  try {
   const response = await fetch(endpoint, {
     ...options,
     headers,
@@ -61,5 +70,26 @@ export async function apiRequest(
   }
 
   return response
+  } catch (error: any) {
+    // Handle network errors (no internet connection, server unreachable, etc.)
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      // Network error - no internet connection or server unreachable
+      const networkError = new NetworkError(
+        'Network Error: No internet connection or server unreachable. Please check your internet connection and try again.'
+      )
+      throw networkError
+    }
+    
+    // Handle other fetch errors
+    if (error.name === 'NetworkError' || error.message.includes('network') || error.message.includes('Failed to fetch')) {
+      const networkError = new NetworkError(
+        'Network Error: Unable to connect to the server. Please check your internet connection and try again.'
+      )
+      throw networkError
+    }
+    
+    // Re-throw other errors
+    throw error
+  }
 }
 

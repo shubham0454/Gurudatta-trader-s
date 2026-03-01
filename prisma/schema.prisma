@@ -47,12 +47,16 @@ model Feed {
   brand       String?
   weight      Float    // in kg (25, 50, etc.)
   defaultPrice Float   // default price per unit
-  stock       Float    @default(0) // remaining stock in godown
+  stock       Float    @default(0) // remaining stock in godown (deprecated - use location stocks)
+  shopStock   Float    @default(0) // stock in shop
+  godownStock Float    @default(0) // stock in godown
+  status      String   @default("active") // active, inactive (for soft delete)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   billItems   BillItem[]
 
   @@index([name])
+  @@index([status])
   @@map("feeds")
 }
 
@@ -65,6 +69,7 @@ model Bill {
   paidAmount  Float    @default(0)
   pendingAmount Float  // totalAmount - paidAmount
   status      String   @default("pending") // pending, partial, paid
+  billStatus  String   @default("active") // active, inactive (for soft delete)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   items       BillItem[]
@@ -72,23 +77,26 @@ model Bill {
 
   @@index([userId])
   @@index([status])
+  @@index([billStatus])
   @@index([createdAt])
   @@map("bills")
 }
 
 model BillItem {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  billId      String   @db.ObjectId
-  bill        Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
-  feedId      String   @db.ObjectId
-  feed        Feed     @relation(fields: [feedId], references: [id])
-  quantity    Float
-  unitPrice   Float    // custom price or default price
-  totalPrice  Float    // quantity * unitPrice
-  createdAt   DateTime @default(now())
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  billId          String   @db.ObjectId
+  bill            Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
+  feedId          String   @db.ObjectId
+  feed            Feed     @relation(fields: [feedId], references: [id])
+  quantity        Float
+  unitPrice       Float    // custom price or default price
+  totalPrice      Float    // quantity * unitPrice
+  storageLocation String   @default("godown") // shop, godown, or custom location
+  createdAt       DateTime @default(now())
 
   @@index([billId])
   @@index([feedId])
+  @@index([storageLocation])
   @@map("billitems")
 }
 

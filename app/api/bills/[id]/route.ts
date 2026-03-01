@@ -69,29 +69,51 @@ export async function DELETE(
       )
     }
 
-    // Use transaction to ensure atomicity - restore stock and delete bill together
+    // Check if bill is already inactive
+    if (bill.billStatus === 'inactive') {
+      return NextResponse.json(
+        { error: 'Bill is already deleted' },
+        { status: 400 }
+      )
+    }
+
+    // Use transaction to ensure atomicity - restore stock and soft delete bill
     await prisma.$transaction(async (tx) => {
-      // Restore stock for each feed item
+      // Restore stock for each feed item based on storage location
       for (const item of bill.items) {
+        const storageLocation = (item as any).storageLocation || 'godown'
+        const updateData: any = {}
+        
+        if (storageLocation === 'shop') {
+          updateData.shopStock = { increment: item.quantity }
+        } else if (storageLocation === 'godown') {
+          updateData.godownStock = { increment: item.quantity }
+        } else {
+          // For custom locations, restore to godown by default
+          updateData.godownStock = { increment: item.quantity }
+        }
+        
+        // Also update legacy stock field for backward compatibility
+        updateData.stock = { increment: item.quantity }
+
         await tx.feed.update({
           where: { id: item.feedId },
-          data: {
-            stock: {
-              increment: item.quantity,
-            },
-          },
+          data: updateData,
         })
       }
 
-      // Delete the bill (items will be deleted automatically due to cascade)
-      await tx.bill.delete({
+      // Soft delete: Set billStatus to inactive instead of deleting
+      await tx.bill.update({
         where: { id: params.id },
+        data: {
+          billStatus: 'inactive',
+        },
       })
     })
 
     return NextResponse.json({ 
       success: true,
-      message: `Bill ${bill.billNumber} deleted successfully. Stock has been restored.`
+      message: `Bill ${bill.billNumber} has been deleted. Stock has been restored.`
     })
   } catch (error: any) {
     if (error.status === 401) {

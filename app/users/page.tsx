@@ -75,10 +75,35 @@ export default function UsersPage() {
         },
       }, true) // Use cache
       const data = await response.json()
-      setAllUsers(data.users)
-      setUsers(data.users)
-    } catch (error) {
+      
+      // Sort users: active first, then inactive, both sorted by name
+      const usersList = Array.isArray(data.users) ? data.users : []
+      const sortedUsers = [...usersList].sort((a, b) => {
+        // First, sort by status: active comes before inactive
+        const aStatus = (a.status || 'active').toLowerCase()
+        const bStatus = (b.status || 'active').toLowerCase()
+        
+        if (aStatus === 'active' && bStatus === 'inactive') {
+          return -1 // active comes first
+        }
+        if (aStatus === 'inactive' && bStatus === 'active') {
+          return 1 // active comes first
+        }
+        
+        // If same status, sort by name alphabetically
+        return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
+      })
+      
+      setAllUsers(sortedUsers)
+      // Initially set users to sorted list (useEffect will handle filtering when searchQuery changes)
+      setUsers(sortedUsers)
+    } catch (error: any) {
       console.error('Error fetching users:', error)
+      if (error.name === 'NetworkError' || error.message?.includes('Network Error')) {
+        showToast('Network Error: No internet connection. Please check your connection and try again.', 'error')
+      } else {
+        showToast('Failed to load users. Please try again.', 'error')
+      }
     } finally {
       setLoading(false)
       setIsFetching(false)
@@ -99,7 +124,24 @@ export default function UsersPage() {
       )
     }
 
-    setUsers(filtered)
+    // Sort filtered results: active first, then inactive, both sorted by name
+    const sortedFiltered = [...filtered].sort((a, b) => {
+      // First, sort by status: active comes before inactive
+      const aStatus = a.status || 'active'
+      const bStatus = b.status || 'active'
+      
+      if (aStatus === 'active' && bStatus === 'inactive') {
+        return -1 // active comes first
+      }
+      if (aStatus === 'inactive' && bStatus === 'active') {
+        return 1 // active comes first
+      }
+      
+      // If same status, sort by name alphabetically
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    })
+
+    setUsers(sortedFiltered)
     setCurrentPage(1)
   }, [searchQuery, allUsers])
 
@@ -367,10 +409,17 @@ export default function UsersPage() {
                               try {
                                 const token = localStorage.getItem('token')
                                 const newStatus = user.status === 'active' ? 'inactive' : 'active'
+                                // Only send required fields for status update
+                                // Convert null to empty string for email
                                 const response = await apiRequest(`/api/users/${user.id}`, {
                                   method: 'PUT',
                                   body: JSON.stringify({
-                                    ...user,
+                                    name: user.name,
+                                    mobileNo: user.mobileNo,
+                                    address: user.address || null,
+                                    email: (user.email === null || user.email === undefined) ? '' : user.email,
+                                    userCode: user.userCode,
+                                    userType: user.userType,
                                     status: newStatus,
                                   }),
                                   headers: {
@@ -380,9 +429,14 @@ export default function UsersPage() {
                                 if (response.ok) {
                                   fetchUsers()
                                   showToast(`User ${newStatus === 'active' ? 'activated' : 'deactivated'} successfully!`, 'success')
+                                } else {
+                                  const errorData = await response.json()
+                                  console.error('Update error:', errorData)
+                                  showToast(errorData.error || 'Failed to update status', 'error')
                                 }
-                              } catch (error) {
-                                showToast('Failed to update status', 'error')
+                              } catch (error: any) {
+                                console.error('Error updating status:', error)
+                                showToast(error.message || 'Failed to update status', 'error')
                               }
                             }}
                             className={`px-2 py-1 rounded text-xs font-medium ${

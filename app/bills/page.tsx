@@ -22,12 +22,15 @@ interface Feed {
   weight: number
   defaultPrice: number
   stock: number
+  shopStock?: number
+  godownStock?: number
 }
 
 interface BillItem {
   feedId: string
   quantity: number
   unitPrice: number
+  storageLocation?: string
 }
 
 interface Bill {
@@ -115,11 +118,21 @@ export default function BillsPage() {
 
       setAllBills(billsArray)
       setBills(billsArray)
-      // Filter to show only active users
-      setUsers(usersArray.filter((user: User) => !user.status || user.status === 'active'))
+      // Filter to show only active users, sorted by name
+      const activeUsers = usersArray.filter((user: User) => !user.status || user.status === 'active')
+      const sortedUsers = [...activeUsers].sort((a, b) => {
+        // Sort by name alphabetically
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+      })
+      setUsers(sortedUsers)
       setFeeds(feedsArray)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching data:', error)
+      if (error.name === 'NetworkError' || error.message?.includes('Network Error')) {
+        showToast('Network Error: No internet connection. Please check your connection and try again.', 'error')
+      } else {
+        showToast('Failed to load data. Please try again.', 'error')
+      }
     } finally {
       setLoading(false)
       setIsFetching(false)
@@ -165,27 +178,103 @@ export default function BillsPage() {
   }, [billItems, billStatus])
 
   const addBillItem = () => {
-    setBillItems([...billItems, { feedId: '', quantity: 0, unitPrice: 0 }])
+    setBillItems([...billItems, { feedId: '', quantity: 0, unitPrice: 0, storageLocation: 'godown' }])
   }
 
   const updateBillItem = (index: number, field: keyof BillItem, value: string | number) => {
     const updated = [...billItems]
     updated[index] = { ...updated[index], [field]: value }
     
-    // If feed changed, update unit price to default price
+      // If feed changed, update unit price to default price and validate stock
     if (field === 'feedId') {
       const feed = feeds.find(f => f.id === value)
       if (feed) {
         updated[index].unitPrice = feed.defaultPrice
+          // Keep existing storage location or default to godown
+          const storageLocation = updated[index].storageLocation || 'godown'
+          
+          // Check if selected location has stock
+          let availableStock = 0
+          if (storageLocation === 'shop') {
+            availableStock = feed.shopStock || 0
+          } else if (storageLocation === 'godown') {
+            availableStock = feed.godownStock || 0
+          }
+          
+          // Fallback to old stock field if location stocks are 0
+          if (availableStock === 0 && feed.stock > 0 && !feed.shopStock && !feed.godownStock) {
+            availableStock = feed.stock
+          }
+          
+          // If no stock in selected location, show warning and reset quantity
+          if (availableStock === 0) {
+            showToast(`No stock available for ${feed.name} in ${storageLocation}. Please select a different location or feed.`, 'warning')
+            updated[index].quantity = 0
+          } else {
+            // Auto-set quantity to available stock if current quantity exceeds it
+            if (updated[index].quantity > availableStock) {
+              updated[index].quantity = availableStock
+              showToast(`Quantity adjusted to available stock in ${storageLocation}: ${availableStock.toFixed(0)}`, 'info')
+            }
+          }
+        }
       }
+      
+      // If storage location changed, validate stock for selected feed (if any)
+      if (field === 'storageLocation') {
+        const feed = feeds.find(f => f.id === updated[index].feedId)
+        if (feed) {
+          const newLocation = value as 'shop' | 'godown'
+          let availableStock = 0
+          
+          if (newLocation === 'shop') {
+            availableStock = feed.shopStock || 0
+          } else if (newLocation === 'godown') {
+            availableStock = feed.godownStock || 0
+          }
+          
+          // Fallback to old stock field if location stocks are 0
+          if (availableStock === 0 && feed.stock > 0 && !feed.shopStock && !feed.godownStock) {
+            availableStock = feed.stock
+          }
+          
+          // If no stock in new location, show warning and reset quantity
+          if (availableStock === 0) {
+            showToast(`No stock available for ${feed.name} in ${newLocation}. Please select a different location or feed.`, 'warning')
+            updated[index].quantity = 0
+          } else {
+            // Auto-adjust quantity if it exceeds available stock
+            if (updated[index].quantity > availableStock) {
+              updated[index].quantity = availableStock
+              showToast(`Quantity adjusted to available stock in ${newLocation}: ${availableStock.toFixed(0)}`, 'info')
+            }
+          }
+        }
+        // If no feed is selected, location can still be changed - this is allowed
     }
     
-    // Validate quantity against stock
+    // Validate quantity against stock based on item storage location
     if (field === 'quantity') {
       const feed = feeds.find(f => f.id === updated[index].feedId)
-      if (feed && parseFloat(value as string) > feed.stock) {
-        showToast(`You cannot add more quantity than available stock. Available: ${feed.stock.toFixed(0)}`, 'error')
-        updated[index].quantity = feed.stock
+      if (feed) {
+        const storageLocation = updated[index].storageLocation || 'godown'
+        let availableStock = 0
+        
+        if (storageLocation === 'shop') {
+          availableStock = feed.shopStock || 0
+        } else if (storageLocation === 'godown') {
+          availableStock = feed.godownStock || 0
+        }
+        
+        // Fallback to old stock field if location stocks are 0
+        if (availableStock === 0 && feed.stock > 0) {
+          availableStock = feed.stock
+        }
+        
+        if (parseFloat(value as string) > availableStock) {
+          showToast(`Insufficient stock in ${storageLocation}. Available: ${availableStock.toFixed(0)}`, 'error')
+          updated[index].quantity = availableStock
+        }
       }
     }
     
@@ -231,11 +320,27 @@ export default function BillsPage() {
         return
       }
       
-      // Check stock availability
+      // Check stock availability based on item storage location
       const feed = feeds.find(f => f.id === item.feedId)
-      if (feed && item.quantity > feed.stock) {
-        showToast(`Insufficient stock for ${feed.name}. Available: ${feed.stock.toFixed(0)}, Requested: ${item.quantity}`, 'error')
+      if (feed) {
+        const storageLocation = item.storageLocation || 'godown'
+        let availableStock = 0
+        
+        if (storageLocation === 'shop') {
+          availableStock = feed.shopStock || 0
+        } else if (storageLocation === 'godown') {
+          availableStock = feed.godownStock || 0
+        }
+        
+        // Fallback to old stock field if location stocks are 0
+        if (availableStock === 0 && feed.stock > 0) {
+          availableStock = feed.stock
+        }
+        
+        if (item.quantity > availableStock) {
+          showToast(`Insufficient stock for ${feed.name} in ${storageLocation}. Available: ${availableStock.toFixed(0)}, Requested: ${item.quantity}`, 'error')
         return
+        }
       }
     }
 
@@ -300,9 +405,13 @@ export default function BillsPage() {
 
           const userData = await userRes.json()
           userId = userData.user.id
-        } catch (error) {
+        } catch (error: any) {
           console.error('Error processing one-time customer:', error)
+          if (error.name === 'NetworkError' || error.message?.includes('Network Error')) {
+            showToast('Network Error: No internet connection. Please check your connection and try again.', 'error')
+          } else {
           showToast('Failed to process one-time customer. Please try again.', 'error')
+          }
           return
         }
       }
@@ -310,11 +419,17 @@ export default function BillsPage() {
       const total = billItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0)
       const paidAmt = billStatus === 'paid' ? total : (billStatus === 'partial' ? parseFloat(billPaidAmount) || 0 : 0)
       
+      // Use storageLocation from each item (already set in the form)
+      const itemsWithLocation = billItems.map(item => ({
+        ...item,
+        storageLocation: item.storageLocation || 'godown', // Default to godown if not set
+      }))
+      
       const response = await apiRequest('/api/bills', {
         method: 'POST',
         body: JSON.stringify({
           userId: userId,
-          items: billItems,
+          items: itemsWithLocation,
           status: billStatus,
           paidAmount: paidAmt,
         }),
@@ -345,12 +460,16 @@ export default function BillsPage() {
             'error'
           )
         } else {
-          showToast(error.error || 'Failed to create bill', 'error')
-        }
+        showToast(error.error || 'Failed to create bill', 'error')
       }
-    } catch (error) {
+      }
+    } catch (error: any) {
       console.error('Error creating bill:', error)
-      showToast('An error occurred while creating the bill', 'error')
+      if (error.name === 'NetworkError' || error.message?.includes('Network Error')) {
+        showToast('Network Error: No internet connection. Please check your connection and try again.', 'error')
+      } else {
+        showToast('An error occurred while creating the bill. Please try again.', 'error')
+      }
     } finally {
       setIsSubmitting(false) // Reset submitting state
     }
@@ -642,7 +761,23 @@ export default function BillsPage() {
                             return matchesType && matchesSearch
                           })
 
-                          if (filteredUsers.length === 0) {
+                          // Sort filtered users: active first, then inactive, both sorted by name
+                          const sortedFilteredUsers = [...filteredUsers].sort((a, b) => {
+                            const aStatus = a.status || 'active'
+                            const bStatus = b.status || 'active'
+                            
+                            if (aStatus === 'active' && bStatus === 'inactive') {
+                              return -1 // active comes first
+                            }
+                            if (aStatus === 'inactive' && bStatus === 'active') {
+                              return 1 // active comes first
+                            }
+                            
+                            // If same status, sort by name alphabetically
+                            return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+                          })
+
+                          if (sortedFilteredUsers.length === 0) {
                             return (
                               <div className="px-4 py-3 text-sm text-slate-400 text-center">
                                 No users found
@@ -650,7 +785,7 @@ export default function BillsPage() {
                             )
                           }
 
-                          return filteredUsers.map((user) => (
+                          return sortedFilteredUsers.map((user) => (
                             <button
                               key={user.id}
                               type="button"
@@ -791,7 +926,7 @@ export default function BillsPage() {
               )}
             </div>
 
-            <div>
+            <div className="w-full">
               <div className="flex justify-between items-center mb-2">
                 <label className="block text-sm font-medium text-slate-300">
                   Bill Items *
@@ -809,7 +944,7 @@ export default function BillsPage() {
                 {billItems.map((item, index) => {
                   const selectedFeed = feeds.find(f => f.id === item.feedId)
                   return (
-                    <div key={index} className="border border-slate-600 rounded-lg p-3 space-y-2 bg-slate-700/50">
+                      <div key={index} className="border border-slate-600 rounded-lg p-3 space-y-2 bg-slate-700/50 w-full">
                       <div className="flex justify-between items-center">
                         <span className="text-sm font-medium text-slate-300">Item {index + 1}</span>
                         <button
@@ -820,18 +955,67 @@ export default function BillsPage() {
                           Remove
                         </button>
                       </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full">
+                          <div className="md:col-span-2">
+                            <label className="block text-xs text-slate-400 mb-1">Select Feed *</label>
                       <select
                         value={item.feedId}
                         onChange={(e) => updateBillItem(index, 'feedId', e.target.value)}
                         className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white text-sm"
                       >
                         <option value="">Select Feed</option>
-                        {feeds.map((feed) => (
-                          <option key={feed.id} value={feed.id}>
-                            {feed.name} {feed.brand ? `(${feed.brand})` : ''} - {feed.weight}kg | Stock: {feed.stock.toFixed(0)} | ₹{feed.defaultPrice.toFixed(2)} per bag
+                              {feeds
+                                .map((feed) => {
+                                  const storageLocation = item.storageLocation || 'godown'
+                                  const shopStock = feed.shopStock || 0
+                                  const godownStock = feed.godownStock || 0
+                                  const legacyStock = (feed.stock > 0 && !feed.shopStock && !feed.godownStock) ? feed.stock : 0
+                                  
+                                  // Show available stock for item's storage location
+                                  let availableStock = 0
+                                  if (storageLocation === 'shop') {
+                                    availableStock = shopStock || (legacyStock > 0 && !feed.shopStock && !feed.godownStock ? legacyStock : 0)
+                                  } else {
+                                    availableStock = godownStock || (legacyStock > 0 && !feed.shopStock && !feed.godownStock ? legacyStock : 0)
+                                  }
+                                  
+                                  // Show stock availability with warning if insufficient
+                                  const stockText = availableStock > 0 
+                                    ? `${storageLocation === 'shop' ? 'Shop' : 'Godown'} Stock: ${availableStock.toFixed(0)}`
+                                    : `No stock in ${storageLocation === 'shop' ? 'Shop' : 'Godown'}`
+                                  
+                                  return (
+                                    <option 
+                                      key={feed.id} 
+                                      value={feed.id}
+                                      disabled={availableStock === 0 && legacyStock === 0}
+                                    >
+                                      {feed.name} {feed.brand ? `(${feed.brand})` : ''} - {feed.weight}kg | {stockText} | ₹{feed.defaultPrice.toFixed(2)} per bag
                           </option>
-                        ))}
+                                  )
+                                })}
                       </select>
+                          </div>
+                          <div className="w-full">
+                            <label className="block text-xs text-slate-400 mb-1">Stock Location *</label>
+                            <select
+                              value={item.storageLocation || 'godown'}
+                              onChange={(e) => {
+                                const newLocation = e.target.value as 'shop' | 'godown'
+                                updateBillItem(index, 'storageLocation', newLocation)
+                                // Clear feed selection when location changes (feeds will be filtered differently)
+                                updateBillItem(index, 'feedId', '')
+                                updateBillItem(index, 'quantity', 0)
+                                updateBillItem(index, 'unitPrice', 0)
+                              }}
+                              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white text-sm cursor-pointer"
+                              style={{ appearance: 'auto' }}
+                            >
+                              <option value="shop">Shop</option>
+                              <option value="godown">Godown</option>
+                            </select>
+                          </div>
+                        </div>
                       {selectedFeed && (
                         <div className="mt-2 p-2 bg-blue-900/30 border border-blue-700 rounded-lg text-xs">
                           <div className="grid grid-cols-3 gap-2">
@@ -839,17 +1023,37 @@ export default function BillsPage() {
                               <span className="text-slate-400">Weight:</span>
                               <span className="font-semibold ml-1 text-white">{selectedFeed.weight} kg</span>
                             </div>
+                              <div>
+                                <span className="text-slate-400">Price:</span>
+                                <span className="font-semibold ml-1 text-white">₹{selectedFeed.defaultPrice.toFixed(2)}</span>
+                            </div>
                             <div>
                               <span className="text-slate-400">Available:</span>
                               <span className={`font-semibold ml-1 ${selectedFeed.stock < 100 ? 'text-red-400' : 'text-green-400'}`}>
                                 {selectedFeed.stock.toFixed(0)}
                               </span>
                             </div>
-                            <div>
-                              <span className="text-slate-400">Price:</span>
-                              <span className="font-semibold ml-1 text-white">₹{selectedFeed.defaultPrice.toFixed(2)}</span>
                             </div>
+                            {((selectedFeed.shopStock || 0) > 0 || (selectedFeed.godownStock || 0) > 0) && (
+                              <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-blue-800">
+                                {(selectedFeed.shopStock || 0) > 0 && (
+                            <div>
+                                    <span className="text-slate-400">Shop Stock:</span>
+                                    <span className={`font-semibold ml-1 ${(selectedFeed.shopStock || 0) < 50 ? 'text-red-400' : 'text-green-400'}`}>
+                                      {(selectedFeed.shopStock || 0).toFixed(0)}
+                                    </span>
+                            </div>
+                                )}
+                                {(selectedFeed.godownStock || 0) > 0 && (
+                                  <div>
+                                    <span className="text-slate-400">Godown Stock:</span>
+                                    <span className={`font-semibold ml-1 ${(selectedFeed.godownStock || 0) < 50 ? 'text-red-400' : 'text-green-400'}`}>
+                                      {(selectedFeed.godownStock || 0).toFixed(0)}
+                                    </span>
                           </div>
+                                )}
+                              </div>
+                            )}
                         </div>
                       )}
                       <div className="grid grid-cols-2 gap-2">
@@ -860,26 +1064,42 @@ export default function BillsPage() {
                             value={item.quantity || ''}
                             onChange={(e) => {
                               const value = parseFloat(e.target.value) || 0
-                              if (selectedFeed && value > selectedFeed.stock) {
-                                showToast(`Cannot add more than available stock. Available: ${selectedFeed.stock.toFixed(0)}`, 'error')
-                                updateBillItem(index, 'quantity', selectedFeed.stock)
+                                const storageLocation = item.storageLocation || 'godown'
+                                const availableStock = selectedFeed 
+                                  ? (storageLocation === 'shop' 
+                                      ? (selectedFeed.shopStock || (selectedFeed.stock > 0 && !selectedFeed.shopStock && !selectedFeed.godownStock ? selectedFeed.stock : 0))
+                                      : (selectedFeed.godownStock || (selectedFeed.stock > 0 && !selectedFeed.shopStock && !selectedFeed.godownStock ? selectedFeed.stock : 0)))
+                                  : 0
+                                if (selectedFeed && value > availableStock) {
+                                  showToast(`Cannot add more than available stock in ${storageLocation}. Available: ${availableStock.toFixed(0)}`, 'error')
+                                  updateBillItem(index, 'quantity', availableStock)
                               } else {
                                 updateBillItem(index, 'quantity', value)
                               }
                             }}
                             onBlur={(e) => {
                               const value = parseFloat(e.target.value) || 0
-                              if (selectedFeed && value > selectedFeed.stock) {
-                                showToast(`Quantity adjusted to available stock: ${selectedFeed.stock.toFixed(0)}`, 'warning')
-                                updateBillItem(index, 'quantity', selectedFeed.stock)
+                                const storageLocation = item.storageLocation || 'godown'
+                                const availableStock = selectedFeed 
+                                  ? (storageLocation === 'shop' 
+                                      ? (selectedFeed.shopStock || (selectedFeed.stock > 0 && !selectedFeed.shopStock && !selectedFeed.godownStock ? selectedFeed.stock : 0))
+                                      : (selectedFeed.godownStock || (selectedFeed.stock > 0 && !selectedFeed.shopStock && !selectedFeed.godownStock ? selectedFeed.stock : 0)))
+                                  : 0
+                                if (selectedFeed && value > availableStock) {
+                                  showToast(`Quantity adjusted to available stock in ${storageLocation}: ${availableStock.toFixed(0)}`, 'warning')
+                                  updateBillItem(index, 'quantity', availableStock)
                               }
                             }}
                             className={`w-full px-3 py-2 bg-slate-700 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white text-sm ${
-                              selectedFeed && item.quantity > selectedFeed.stock ? 'border-red-500' : 'border-slate-600'
+                                selectedFeed && item.quantity > ((item.storageLocation || 'godown') === 'shop' ? (selectedFeed.shopStock || 0) : (selectedFeed.godownStock || 0)) ? 'border-red-500' : 'border-slate-600'
                             }`}
                             step="0.01"
                             min="0"
-                            max={selectedFeed?.stock || 0}
+                              max={selectedFeed 
+                                ? ((item.storageLocation || 'godown') === 'shop' 
+                                    ? (selectedFeed.shopStock || (selectedFeed.stock > 0 && !selectedFeed.shopStock && !selectedFeed.godownStock ? selectedFeed.stock : 0))
+                                    : (selectedFeed.godownStock || (selectedFeed.stock > 0 && !selectedFeed.shopStock && !selectedFeed.godownStock ? selectedFeed.stock : 0)))
+                                : 0}
                           />
                           {selectedFeed && item.quantity > selectedFeed.stock && (
                             <p className="text-xs text-red-400 mt-1">
@@ -912,7 +1132,6 @@ export default function BillsPage() {
                     </div>
                   )
                 })}
-              </div>
 
               {billItems.length > 0 && (
                 <div className="mt-4 p-3 bg-slate-700 rounded-lg border border-slate-600">
@@ -921,6 +1140,7 @@ export default function BillsPage() {
                   </p>
                 </div>
               )}
+              </div>
             </div>
 
             {/* Bill Status and Payment */}
@@ -1100,18 +1320,67 @@ export default function BillsPage() {
                           Remove
                         </button>
                       </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full">
+                          <div className="md:col-span-2">
+                            <label className="block text-xs text-slate-400 mb-1">Select Feed *</label>
                       <select
                         value={item.feedId}
                         onChange={(e) => updateBillItem(index, 'feedId', e.target.value)}
                         className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white text-sm"
                       >
                         <option value="">Select Feed</option>
-                        {feeds.map((feed) => (
-                          <option key={feed.id} value={feed.id}>
-                            {feed.name} {feed.brand ? `(${feed.brand})` : ''} - {feed.weight}kg | Stock: {feed.stock.toFixed(0)} | ₹{feed.defaultPrice.toFixed(2)} per bag
+                              {feeds
+                                .map((feed) => {
+                                  const storageLocation = item.storageLocation || 'godown'
+                                  const shopStock = feed.shopStock || 0
+                                  const godownStock = feed.godownStock || 0
+                                  const legacyStock = (feed.stock > 0 && !feed.shopStock && !feed.godownStock) ? feed.stock : 0
+                                  
+                                  // Show available stock for item's storage location
+                                  let availableStock = 0
+                                  if (storageLocation === 'shop') {
+                                    availableStock = shopStock || (legacyStock > 0 && !feed.shopStock && !feed.godownStock ? legacyStock : 0)
+                                  } else {
+                                    availableStock = godownStock || (legacyStock > 0 && !feed.shopStock && !feed.godownStock ? legacyStock : 0)
+                                  }
+                                  
+                                  // Show stock availability with warning if insufficient
+                                  const stockText = availableStock > 0 
+                                    ? `${storageLocation === 'shop' ? 'Shop' : 'Godown'} Stock: ${availableStock.toFixed(0)}`
+                                    : `No stock in ${storageLocation === 'shop' ? 'Shop' : 'Godown'}`
+                                  
+                                  return (
+                                    <option 
+                                      key={feed.id} 
+                                      value={feed.id}
+                                      disabled={availableStock === 0 && legacyStock === 0}
+                                    >
+                                      {feed.name} {feed.brand ? `(${feed.brand})` : ''} - {feed.weight}kg | {stockText} | ₹{feed.defaultPrice.toFixed(2)} per bag
                           </option>
-                        ))}
+                                  )
+                                })}
                       </select>
+                          </div>
+                          <div className="w-full">
+                            <label className="block text-xs text-slate-400 mb-1">Stock Location *</label>
+                            <select
+                              value={item.storageLocation || 'godown'}
+                              onChange={(e) => {
+                                const newLocation = e.target.value as 'shop' | 'godown'
+                                updateBillItem(index, 'storageLocation', newLocation)
+                                // Clear feed selection when location changes (feeds will be filtered differently)
+                                updateBillItem(index, 'feedId', '')
+                                updateBillItem(index, 'quantity', 0)
+                                updateBillItem(index, 'unitPrice', 0)
+                              }}
+                              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white text-sm cursor-pointer"
+                              style={{ appearance: 'auto' }}
+                            >
+                              <option value="shop">Shop</option>
+                              <option value="godown">Godown</option>
+                            </select>
+                          </div>
+                        </div>
                       {selectedFeed && (
                         <div className="mt-2 p-2 bg-blue-900/30 border border-blue-700 rounded-lg text-xs">
                           <div className="grid grid-cols-3 gap-2">
@@ -1130,7 +1399,30 @@ export default function BillsPage() {
                               <span className="font-semibold ml-1 text-white">₹{selectedFeed.defaultPrice.toFixed(2)}</span>
                             </div>
                           </div>
+                          <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-blue-800">
+                            <div>
+                              <span className="text-slate-400">Shop Stock:</span>
+                              <span className={`font-semibold ml-1 ${(selectedFeed.shopStock || 0) < 50 ? 'text-red-400' : 'text-green-400'}`}>
+                                {(selectedFeed.shopStock || 0).toFixed(0)}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400">Godown Stock:</span>
+                              <span className={`font-semibold ml-1 ${(selectedFeed.godownStock || 0) < 50 ? 'text-red-400' : 'text-green-400'}`}>
+                                {(selectedFeed.godownStock || 0).toFixed(0)}
+                              </span>
+                            </div>
+                          </div>
                         </div>
+                      )}
+                      {selectedFeed && (
+                        <p className="text-xs text-slate-400 mt-1">
+                          Available in {item.storageLocation || 'godown'}: {
+                            item.storageLocation === 'shop' 
+                              ? (selectedFeed.shopStock || 0).toFixed(0)
+                              : (selectedFeed.godownStock || 0).toFixed(0)
+                          }
+                        </p>
                       )}
                       <div className="grid grid-cols-2 gap-2">
                         <div>
@@ -1142,7 +1434,13 @@ export default function BillsPage() {
                             className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white text-sm"
                             step="0.01"
                             min="0"
-                            max={selectedFeed?.stock || 0}
+                            max={(() => {
+                              if (!selectedFeed) return 0
+                              const location = item.storageLocation || 'godown'
+                              if (location === 'shop') return selectedFeed.shopStock || 0
+                              if (location === 'godown') return selectedFeed.godownStock || 0
+                              return selectedFeed.stock || 0
+                            })()}
                           />
                         </div>
                         <div>

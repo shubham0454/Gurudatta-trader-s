@@ -17,7 +17,9 @@ interface Feed {
   brand: string | null
   weight: number
   defaultPrice: number
-  stock: number // Current available stock
+  stock: number // Current available stock (legacy)
+  shopStock?: number // Stock in shop
+  godownStock?: number // Stock in godown
   soldStock?: number // Total sold stock
   totalStock?: number // Total stock (current + sold)
 }
@@ -32,6 +34,7 @@ export default function FeedsPage() {
   const [editingFeed, setEditingFeed] = useState<Feed | null>(null)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [feedToDelete, setFeedToDelete] = useState<Feed | null>(null)
+  const [newFeedLocation, setNewFeedLocation] = useState<'shop' | 'godown'>('godown') // Location for new feed stock
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
@@ -66,10 +69,16 @@ export default function FeedsPage() {
         },
       }, true) // Use cache
       const data = await response.json()
-      setAllFeeds(data.feeds)
-      setFeeds(data.feeds)
-    } catch (error) {
+      const feedsData = data.feeds || []
+      setAllFeeds(feedsData)
+      setFeeds(feedsData)
+    } catch (error: any) {
       console.error('Error fetching feeds:', error)
+      if (error.name === 'NetworkError' || error.message?.includes('Network Error')) {
+        showToast('Network Error: No internet connection. Please check your connection and try again.', 'error')
+      } else {
+        showToast('Failed to load feeds. Please try again.', 'error')
+      }
     } finally {
       setLoading(false)
       setIsFetching(false)
@@ -79,12 +88,12 @@ export default function FeedsPage() {
   // Search functionality
   useEffect(() => {
     if (searchQuery.trim() === '') {
-      setFeeds(allFeeds)
+      setFeeds(allFeeds || [])
       setCurrentPage(1)
       return
     }
 
-    const filtered = allFeeds.filter(
+    const filtered = (allFeeds || []).filter(
       (feed) =>
         feed.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (feed.brand && feed.brand.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -95,10 +104,11 @@ export default function FeedsPage() {
   }, [searchQuery, allFeeds])
 
   // Pagination
-  const totalPages = Math.ceil(feeds.length / itemsPerPage)
+  const feedsList = feeds || []
+  const totalPages = Math.ceil(feedsList.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
-  const paginatedFeeds = feeds.slice(startIndex, endIndex)
+  const paginatedFeeds = feedsList.slice(startIndex, endIndex)
 
   const onSubmit = async (data: FeedInput) => {
     try {
@@ -106,9 +116,37 @@ export default function FeedsPage() {
       const url = editingFeed ? `/api/feeds/${editingFeed.id}` : '/api/feeds'
       const method = editingFeed ? 'PUT' : 'POST'
 
+      // Prepare data with location-based stock
+      const feedData: any = {
+        name: data.name,
+        brand: data.brand || '',
+        weight: data.weight,
+        defaultPrice: data.defaultPrice,
+        stock: data.stock || 0, // Legacy stock
+      }
+
+      // For new feeds, add stock to selected location
+      if (!editingFeed) {
+        if (newFeedLocation === 'shop') {
+          feedData.shopStock = data.stock || 0
+          feedData.godownStock = 0
+        } else {
+          feedData.shopStock = 0
+          feedData.godownStock = data.stock || 0
+        }
+      } else {
+        // For editing, use form values for shop/godown stock
+        // All remaining stock should be in godown (as per user requirement)
+        feedData.shopStock = data.shopStock || 0
+        feedData.godownStock = data.godownStock || 0
+        
+        // Update legacy stock to be sum of shop and godown
+        feedData.stock = (data.shopStock || 0) + (data.godownStock || 0)
+      }
+
       const response = await apiRequest(url, {
         method,
-        body: JSON.stringify(data),
+        body: JSON.stringify(feedData),
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -118,15 +156,20 @@ export default function FeedsPage() {
         setIsModalOpen(false)
         reset()
         setEditingFeed(null)
+        setNewFeedLocation('godown') // Reset to default
         fetchFeeds()
         showToast(editingFeed ? 'Feed updated successfully!' : 'Feed created successfully!', 'success')
       } else {
         const error = await response.json()
         showToast(error.error || 'Failed to save feed', 'error')
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving feed:', error)
-      showToast('An error occurred', 'error')
+      if (error.name === 'NetworkError' || error.message?.includes('Network Error')) {
+        showToast('Network Error: No internet connection. Please check your connection and try again.', 'error')
+      } else {
+        showToast('An error occurred. Please try again.', 'error')
+      }
     }
   }
 
@@ -138,6 +181,8 @@ export default function FeedsPage() {
       weight: feed.weight,
       defaultPrice: feed.defaultPrice,
       stock: feed.stock,
+      shopStock: feed.shopStock || 0,
+      godownStock: feed.godownStock || 0,
     })
     setIsModalOpen(true)
   }
@@ -147,12 +192,13 @@ export default function FeedsPage() {
     setDeleteConfirmOpen(true)
   }
 
-  const handleDeleteConfirm = async () => {
-    if (!feedToDelete) return
+  const handleDeleteConfirm = async (feed?: Feed) => {
+    const feedToDeleteId = feed?.id || feedToDelete?.id || editingFeed?.id
+    if (!feedToDeleteId) return
 
     try {
       const token = localStorage.getItem('token')
-      const response = await apiRequest(`/api/feeds/${feedToDelete.id}`, {
+      const response = await apiRequest(`/api/feeds/${feedToDeleteId}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -162,8 +208,11 @@ export default function FeedsPage() {
       if (response.ok) {
         setDeleteConfirmOpen(false)
         setFeedToDelete(null)
+        setIsModalOpen(false)
+        setEditingFeed(null)
+        reset()
         fetchFeeds()
-        showToast('Feed deleted successfully!', 'success')
+        showToast('Feed deleted successfully! It has been hidden from the list.', 'success')
       } else {
         const error = await response.json()
         showToast(error.error || 'Failed to delete feed', 'error')
@@ -182,6 +231,8 @@ export default function FeedsPage() {
     setDeleteConfirmOpen(false)
     setFeedToDelete(null)
   }
+
+
 
   if (loading) {
     return (
@@ -265,13 +316,40 @@ export default function FeedsPage() {
                         <span className="block text-xs text-slate-400">₹{(feed.defaultPrice / feed.weight).toFixed(2)}/kg</span>
                       </td>
                       <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm">
-                        <div className="flex flex-col">
-                          <span className={feed.stock < 100 ? 'text-red-400 font-bold' : feed.stock < 200 ? 'text-amber-400 font-semibold' : 'text-green-400 font-semibold'}>
-                            {feed.stock.toFixed(0)}
-                          </span>
-                          <span className="text-xs text-slate-400 hidden sm:block">
-                            Available
-                          </span>
+                        <div className="flex flex-col space-y-1">
+                          {(() => {
+                            // Show current stock: if shop stock exists, show shop; otherwise show godown
+                            // If both exist, show godown (as per user requirement)
+                            const shopStock = feed.shopStock || 0
+                            const godownStock = feed.godownStock || 0
+                            const legacyStock = (feed.stock > 0 && !shopStock && !godownStock) ? feed.stock : 0
+                            
+                            // Determine which stock to show
+                            let currentStock = 0
+                            let stockLocation = ''
+                            
+                            if (godownStock > 0) {
+                              currentStock = godownStock
+                              stockLocation = 'Godown'
+                            } else if (shopStock > 0) {
+                              currentStock = shopStock
+                              stockLocation = 'Shop'
+                            } else if (legacyStock > 0) {
+                              currentStock = legacyStock
+                              stockLocation = 'Godown' // Move legacy to godown
+                            }
+                            
+                            return (
+                              <div className="flex items-center gap-2">
+                                <span className={currentStock < 100 ? 'text-red-400 font-bold' : currentStock < 200 ? 'text-amber-400 font-semibold' : 'text-green-400 font-semibold'}>
+                                  {currentStock.toFixed(0)}
+                                </span>
+                                <span className="text-xs text-slate-400 hidden sm:block">
+                                  {stockLocation || 'Stock'}
+                                </span>
+                              </div>
+                            )
+                          })()}
                           {/* Mobile view: Show sold and total stock */}
                           <div className="sm:hidden mt-1 space-y-0.5">
                             <span className="text-xs text-blue-400">
@@ -499,42 +577,122 @@ export default function FeedsPage() {
               )}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">
-                Stock (Quantity) *
-              </label>
-              <input
-                {...register('stock', { valueAsNumber: true })}
-                type="number"
-                step="0.01"
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white placeholder-slate-400"
-              />
-              {errors.stock && (
-                <p className="mt-1 text-sm text-red-400">{errors.stock.message}</p>
-              )}
-            </div>
+            {!editingFeed && (
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">
+                  Stock Location *
+                </label>
+                <select
+                  value={newFeedLocation}
+                  onChange={(e) => setNewFeedLocation(e.target.value as 'shop' | 'godown')}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white"
+                >
+                  <option value="shop">Shop</option>
+                  <option value="godown">Godown</option>
+                </select>
+                <p className="mt-1 text-xs text-slate-400">
+                  Select where to add the stock
+                </p>
+              </div>
+            )}
 
-            <div className="flex justify-end space-x-3 pt-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsModalOpen(false)
-                  setEditingFeed(null)
-                  reset()
-                }}
-                className="px-4 py-2 border border-slate-600 rounded-lg text-slate-300 hover:bg-slate-700"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                {editingFeed ? 'Update' : 'Create'}
-              </button>
+            {!editingFeed && (
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">
+                  Stock Quantity *
+                </label>
+                <input
+                  {...register('stock', { valueAsNumber: true })}
+                  type="number"
+                  step="0.01"
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white placeholder-slate-400"
+                  placeholder="Enter stock quantity"
+                />
+                {errors.stock && (
+                  <p className="mt-1 text-sm text-red-400">{errors.stock.message}</p>
+                )}
+              </div>
+            )}
+
+            {editingFeed && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">
+                    Shop Stock
+                  </label>
+                  <input
+                    {...register('shopStock', { valueAsNumber: true })}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white placeholder-slate-400"
+                    placeholder="Enter shop stock"
+                  />
+                  {errors.shopStock && (
+                    <p className="mt-1 text-sm text-red-400">{errors.shopStock.message}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">
+                    Godown Stock
+                  </label>
+                  <input
+                    {...register('godownStock', { valueAsNumber: true })}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white placeholder-slate-400"
+                    placeholder="Enter godown stock"
+                  />
+                  {errors.godownStock && (
+                    <p className="mt-1 text-sm text-red-400">{errors.godownStock.message}</p>
+                  )}
+                  <p className="mt-1 text-xs text-slate-400">
+                    All remaining stock should be in godown
+                  </p>
+                </div>
+              </>
+            )}
+
+            <div className="flex justify-between items-center pt-4">
+              {editingFeed && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm('Are you sure you want to delete this feed? It will be hidden from the list but not permanently deleted.')) {
+                      handleDeleteConfirm(editingFeed)
+                    }
+                  }}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                >
+                  Delete Feed
+                </button>
+              )}
+              {!editingFeed && <div></div>}
+              <div className="flex space-x-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsModalOpen(false)
+                    setEditingFeed(null)
+                    reset()
+                  }}
+                  className="px-4 py-2 border border-slate-600 rounded-lg text-slate-300 hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  {editingFeed ? 'Update' : 'Create'}
+                </button>
+              </div>
             </div>
           </form>
         </Modal>
+
 
         {/* Delete Confirmation Modal */}
         <Modal
@@ -583,7 +741,7 @@ export default function FeedsPage() {
               </button>
               <button
                 type="button"
-                onClick={handleDeleteConfirm}
+                onClick={() => handleDeleteConfirm()}
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
               >
                 Delete Feed
@@ -596,7 +754,7 @@ export default function FeedsPage() {
         {totalPages > 1 && (
           <div className="flex flex-col sm:flex-row justify-between items-center gap-3 bg-slate-800 rounded-lg shadow-lg border border-slate-700 p-4">
             <div className="text-sm text-slate-400">
-              Showing {startIndex + 1} to {Math.min(endIndex, feeds.length)} of {feeds.length} feeds
+              Showing {startIndex + 1} to {Math.min(endIndex, feedsList.length)} of {feedsList.length} feeds
             </div>
             <div className="flex gap-2">
               <button

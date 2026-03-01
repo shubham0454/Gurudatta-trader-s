@@ -56,7 +56,40 @@ export async function PUT(
     authMiddleware(request)
 
     const body = await request.json()
-    const validatedData = userSchema.parse(body)
+    
+    // Extract only the fields that are in the schema
+    // Handle cases where body might contain extra fields from frontend
+    // Convert null/undefined to empty string for optional fields
+    const updateFields: any = {
+      name: body.name || '',
+      mobileNo: body.mobileNo || '',
+    }
+    
+    // Optional fields - convert null to empty string for email, keep null for address
+    if (body.address !== undefined) {
+      updateFields.address = body.address === null ? null : (body.address || null)
+    }
+    if (body.email !== undefined) {
+      // Convert null to empty string for email validation
+      updateFields.email = body.email === null || body.email === '' ? '' : body.email
+    }
+    if (body.userCode) updateFields.userCode = body.userCode
+    if (body.userType) updateFields.userType = body.userType
+    if (body.status) updateFields.status = body.status
+    
+    // Validate the data
+    try {
+      var validatedData = userSchema.parse(updateFields)
+    } catch (validationError: any) {
+      console.error('Validation error:', validationError)
+      return NextResponse.json(
+        { 
+          error: 'Validation error', 
+          details: validationError.errors || validationError.message 
+        },
+        { status: 400 }
+      )
+    }
 
     // First, check if the user exists
     const existingUser = await prisma.user.findUnique({

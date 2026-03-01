@@ -16,13 +16,20 @@ export async function GET(request: NextRequest) {
     let endDate = new Date()
 
     if (type === 'today') {
-      startDate = new Date(now.setHours(0, 0, 0, 0))
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      startDate = today
+      endDate = new Date()
+      endDate.setHours(23, 59, 59, 999)
     } else if (type === 'monthly') {
       startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
     } else {
       startDate = new Date(now.getFullYear(), 0, 1) // Year start
+      endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999) // Year end
     }
 
+    // Fetch all bills in date range first (without billStatus filter)
     const where: any = {
       createdAt: {
         gte: startDate,
@@ -35,7 +42,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch ALL bills without any limit
-    const bills = await prisma.bill.findMany({
+    let bills = await prisma.bill.findMany({
       where,
       include: {
         user: {
@@ -68,6 +75,12 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     })
 
+    // Filter active bills in memory (MongoDB query for billStatus might not work correctly)
+    bills = bills.filter((bill: any) => {
+      // Include bills with billStatus='active' or bills without billStatus (null/undefined)
+      return bill.billStatus === 'active' || bill.billStatus === null || bill.billStatus === undefined
+    })
+
     // Helper function to safely format text
     const safeText = (text: any): string => {
       if (!text) return ''
@@ -92,6 +105,65 @@ export async function GET(request: NextRequest) {
     const partialBills = bills.filter(b => b.status === 'partial').length
     const pendingBills = bills.filter(b => b.status === 'pending').length
 
+    // Calculate Feed-wise Sales Statistics
+    interface FeedSales {
+      feedId: string
+      feedName: string
+      feedWeight: number
+      totalQuantity: number
+      totalAmount: number
+      averagePrice: number
+      billCount: number
+    }
+
+    const feedSalesMap = new Map<string, FeedSales>()
+
+    bills.forEach(bill => {
+      bill.items.forEach(item => {
+        const feedKey = `${item.feed.id}_${item.feed.weight}`
+        const existing = feedSalesMap.get(feedKey)
+        
+        if (existing) {
+          existing.totalQuantity += item.quantity
+          existing.totalAmount += item.totalPrice
+          existing.billCount += 1
+          existing.averagePrice = existing.totalAmount / existing.totalQuantity
+        } else {
+          feedSalesMap.set(feedKey, {
+            feedId: item.feed.id,
+            feedName: item.feed.name,
+            feedWeight: item.feed.weight,
+            totalQuantity: item.quantity,
+            totalAmount: item.totalPrice,
+            averagePrice: item.unitPrice,
+            billCount: 1,
+          })
+        }
+      })
+    })
+
+    const feedSales = Array.from(feedSalesMap.values())
+      .sort((a, b) => b.totalAmount - a.totalAmount) // Sort by total amount descending
+
+    // Check if no bills found
+    if (bills.length === 0) {
+      // Return a PDF with "No data" message
+      const doc = new jsPDF()
+      const pageWidth = doc.internal.pageSize.getWidth()
+      doc.setFontSize(20)
+      doc.text('No Data Available', pageWidth / 2, 50, { align: 'center' })
+      doc.setFontSize(12)
+      const reportTypeText = type === 'today' ? 'Today' : type === 'monthly' ? 'This Month' : 'This Year'
+      doc.text(`No bills found for ${reportTypeText}`, pageWidth / 2, 70, { align: 'center' })
+      const pdfBuffer = Buffer.from(doc.output('arraybuffer'))
+      return new NextResponse(pdfBuffer, {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="sales-report-${type}-${Date.now()}.pdf"`,
+        },
+      })
+    }
+
     const reportTypeText = type === 'today' ? 'Today' : type === 'monthly' ? 'This Month' : 'This Year'
     const dateRange = `${new Date(startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} - ${new Date(endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`
 
@@ -102,7 +174,7 @@ export async function GET(request: NextRequest) {
     const margin = 15
     let yPos = margin
 
-    // Helper function to add text with word wrap
+    // Helper function to add text
     const addText = (text: string, x: number, y: number, options: any = {}) => {
       const fontSize = options.fontSize || 10
       const maxWidth = options.maxWidth || pageWidth - margin * 2
@@ -113,204 +185,198 @@ export async function GET(request: NextRequest) {
         doc.setFont('helvetica', 'normal')
       }
       if (options.color) {
-        if (typeof options.color === 'string') {
-          // Convert hex to RGB
-          const hex = options.color.replace('#', '')
-          const r = parseInt(hex.substring(0, 2), 16)
-          const g = parseInt(hex.substring(2, 4), 16)
-          const b = parseInt(hex.substring(4, 6), 16)
-          doc.setTextColor(r, g, b)
-        } else if (Array.isArray(options.color)) {
+        if (Array.isArray(options.color)) {
           doc.setTextColor(options.color[0], options.color[1], options.color[2])
         }
+      } else {
+        doc.setTextColor(0, 0, 0)
       }
       const lines = doc.splitTextToSize(safeText(text), maxWidth)
       const align = options.align || 'left'
-      if (align === 'center') {
-        doc.text(lines, x, y, { align: 'center' })
-      } else {
-        doc.text(lines, x, y)
-      }
+      doc.text(lines, x, y, { align })
       return lines.length * fontSize * 0.4
     }
 
-    // Helper function to add colored box
-    const addColoredBox = (text: string, x: number, y: number, width: number, height: number, bgColor: number[], textColor: number[] = [0, 0, 0], fontSize: number = 10) => {
-      doc.setFillColor(bgColor[0], bgColor[1], bgColor[2])
-      doc.rect(x, y - height, width, height, 'F')
-      doc.setTextColor(textColor[0], textColor[1], textColor[2])
-      addText(text, x + 2, y - height / 2 + fontSize / 3, { fontSize, bold: true })
-      doc.setTextColor(0, 0, 0)
-    }
-
-    // Header with colors
-      doc.setFillColor(30, 64, 175) // Blue
-      doc.rect(0, 0, pageWidth, 25, 'F')
-      doc.setTextColor(255, 255, 255)
-      addText("Gurudatta trader's", pageWidth / 2, 12, { fontSize: 20, bold: true, maxWidth: pageWidth - margin * 2, align: 'center' })
-      
-      doc.setFillColor(59, 130, 246) // Lighter blue
-      doc.rect(0, 25, pageWidth, 15, 'F')
-      addText('Sales Report', pageWidth / 2, 33, { fontSize: 16, bold: true, maxWidth: pageWidth - margin * 2, align: 'center' })
-      
-      doc.setTextColor(0, 0, 0)
-    yPos = 50
-
-    // Report Info Box
-    doc.setFillColor(30, 64, 175) // Blue header
-    doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
+    // ============================================
+    // PAGE 1: SUMMARY PAGE WITH ALL INFORMATION
+    // ============================================
+    
+    // Header
+    doc.setFillColor(30, 64, 175) // Blue
+    doc.rect(0, 0, pageWidth, 30, 'F')
     doc.setTextColor(255, 255, 255)
-    addText(`Report Type: ${reportTypeText}`, margin + 4, yPos + 5, { fontSize: 10, bold: true })
-    yPos += 10
-
-    if (userId && bills[0]?.user) {
-      doc.setFillColor(243, 244, 246) // Light gray
-      doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
-      doc.setTextColor(0, 0, 0)
-      addText(`Customer: ${safeText(bills[0].user.name)} (${bills[0].user.mobileNo})`, margin + 4, yPos + 5, { fontSize: 10 })
-      yPos += 10
-    }
-
-    doc.setFillColor(255, 255, 255)
-    doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
+    addText("Gurudatta trader's", pageWidth / 2, 15, { fontSize: 22, bold: true, align: 'center' })
+    addText('Monthly Sales Report', pageWidth / 2, 25, { fontSize: 16, bold: true, align: 'center' })
+    
     doc.setTextColor(0, 0, 0)
-    addText(`Period: ${dateRange}`, margin + 4, yPos + 5, { fontSize: 10 })
-    yPos += 10
+    yPos = 40
 
-    doc.setFillColor(243, 244, 246) // Light gray
+    // Report Period
+    doc.setFillColor(243, 244, 246)
     doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
-    addText(`Total Bills: ${bills.length}`, margin + 4, yPos + 5, { fontSize: 10 })
-    yPos += 15
+    addText(`Period: ${dateRange}`, margin + 4, yPos + 5, { fontSize: 10 })
+    addText(`Total Bills: ${bills.length}`, pageWidth - margin - 4, yPos + 5, { fontSize: 10, align: 'right' })
+    yPos += 12
 
-    // Summary Boxes with colors
+    // Summary Statistics Boxes
     const boxWidth = (pageWidth - margin * 3) / 2
-    const boxHeight = 20
+    const boxHeight = 18
 
-    // Total Sales - Green
+    // Total Sales
     doc.setFillColor(16, 185, 129) // Green
     doc.rect(margin, yPos, boxWidth, boxHeight, 'F')
-      doc.setTextColor(255, 255, 255)
+    doc.setTextColor(255, 255, 255)
     addText('Total Sales', margin + 4, yPos + 6, { fontSize: 10, bold: true })
-    doc.setFillColor(209, 250, 229) // Light green
-    doc.rect(margin, yPos + 8, boxWidth, 12, 'F')
-      doc.setTextColor(0, 0, 0)
-    addText(`Rs. ${formatCurrency(totalSales)}`, margin + 4, yPos + 16, { fontSize: 14, bold: true })
+    doc.setFillColor(209, 250, 229)
+    doc.rect(margin, yPos + 8, boxWidth, 10, 'F')
+    doc.setTextColor(0, 0, 0)
+    addText(`Rs. ${formatCurrency(totalSales)}`, margin + 4, yPos + 15, { fontSize: 13, bold: true })
 
-    // Total Paid - Blue
+    // Total Paid
     doc.setFillColor(59, 130, 246) // Blue
     doc.rect(margin * 2 + boxWidth, yPos, boxWidth, boxHeight, 'F')
-      doc.setTextColor(255, 255, 255)
+    doc.setTextColor(255, 255, 255)
     addText('Total Paid', margin * 2 + boxWidth + 4, yPos + 6, { fontSize: 10, bold: true })
-    doc.setFillColor(219, 234, 254) // Light blue
-    doc.rect(margin * 2 + boxWidth, yPos + 8, boxWidth, 12, 'F')
-      doc.setTextColor(0, 0, 0)
-    addText(`Rs. ${formatCurrency(totalPaid)}`, margin * 2 + boxWidth + 4, yPos + 16, { fontSize: 14, bold: true })
-    yPos += 25
+    doc.setFillColor(219, 234, 254)
+    doc.rect(margin * 2 + boxWidth, yPos + 8, boxWidth, 10, 'F')
+    doc.setTextColor(0, 0, 0)
+    addText(`Rs. ${formatCurrency(totalPaid)}`, margin * 2 + boxWidth + 4, yPos + 15, { fontSize: 13, bold: true })
+    yPos += 22
 
-    // Total Pending - Red
+    // Total Pending
     doc.setFillColor(239, 68, 68) // Red
     doc.rect(margin, yPos, boxWidth, boxHeight, 'F')
-      doc.setTextColor(255, 255, 255)
+    doc.setTextColor(255, 255, 255)
     addText('Total Pending', margin + 4, yPos + 6, { fontSize: 10, bold: true })
-    doc.setFillColor(254, 226, 226) // Light red
-    doc.rect(margin, yPos + 8, boxWidth, 12, 'F')
-      doc.setTextColor(0, 0, 0)
-    addText(`Rs. ${formatCurrency(totalPending)}`, margin + 4, yPos + 16, { fontSize: 14, bold: true })
+    doc.setFillColor(254, 226, 226)
+    doc.rect(margin, yPos + 8, boxWidth, 10, 'F')
+    doc.setTextColor(0, 0, 0)
+    addText(`Rs. ${formatCurrency(totalPending)}`, margin + 4, yPos + 15, { fontSize: 13, bold: true })
 
-    // Payment Status - Purple
+    // Payment Status
     doc.setFillColor(139, 92, 246) // Purple
     doc.rect(margin * 2 + boxWidth, yPos, boxWidth, boxHeight, 'F')
-      doc.setTextColor(255, 255, 255)
+    doc.setTextColor(255, 255, 255)
     addText('Payment Status', margin * 2 + boxWidth + 4, yPos + 6, { fontSize: 10, bold: true })
-    doc.setFillColor(243, 232, 255) // Light purple
-    doc.rect(margin * 2 + boxWidth, yPos + 8, boxWidth, 12, 'F')
-      doc.setTextColor(0, 0, 0)
-    addText(`Paid: ${paidBills}`, margin * 2 + boxWidth + 4, yPos + 12, { fontSize: 9 })
-    addText(`Partial: ${partialBills}`, margin * 2 + boxWidth + 4, yPos + 16, { fontSize: 9 })
-    addText(`Pending: ${pendingBills}`, margin * 2 + boxWidth + 4, yPos + 20, { fontSize: 9 })
-    yPos += 30
+    doc.setFillColor(243, 232, 255)
+    doc.rect(margin * 2 + boxWidth, yPos + 8, boxWidth, 10, 'F')
+    doc.setTextColor(0, 0, 0)
+    addText(`Paid: ${paidBills} | Partial: ${partialBills} | Pending: ${pendingBills}`, margin * 2 + boxWidth + 4, yPos + 15, { fontSize: 9 })
+    yPos += 25
 
-      // Bills Overview Table Header
-      doc.setFillColor(99, 102, 241) // Indigo
-      doc.rect(margin, yPos, pageWidth - margin * 2, 10, 'F')
-      doc.setTextColor(255, 255, 255)
-      addText('Bills Overview', pageWidth / 2, yPos + 6, { fontSize: 14, bold: true, maxWidth: pageWidth - margin * 2, align: 'center' })
-      yPos += 15
+    // Feed-wise Sales Breakdown
+    doc.setFillColor(99, 102, 241) // Indigo
+    doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
+    doc.setTextColor(255, 255, 255)
+    addText('Feed-wise Sales Breakdown', pageWidth / 2, yPos + 5, { fontSize: 12, bold: true, align: 'center' })
+    yPos += 12
 
-      // Table Headers
-      doc.setFillColor(30, 64, 175) // Blue
-      doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
-      doc.setTextColor(255, 255, 255)
-    const colWidths = [40, (pageWidth - margin * 2 - 40) / 3, (pageWidth - margin * 2 - 40) / 3, (pageWidth - margin * 2 - 40) / 3]
+    // Feed Sales Table Headers
+    doc.setFillColor(30, 64, 175)
+    doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
+    doc.setTextColor(255, 255, 255)
+    const feedColWidths = [
+      (pageWidth - margin * 2) * 0.35, // Feed Name
+      (pageWidth - margin * 2) * 0.15, // Weight
+      (pageWidth - margin * 2) * 0.15, // Quantity
+      (pageWidth - margin * 2) * 0.15, // Avg Price
+      (pageWidth - margin * 2) * 0.20, // Total Amount
+    ]
     let xPos = margin + 2
-    addText('Bill #', xPos, yPos + 5, { fontSize: 10, bold: true })
-    xPos += colWidths[0]
-    addText('Customer', xPos, yPos + 5, { fontSize: 10, bold: true })
-    xPos += colWidths[1]
-    addText('Date', xPos, yPos + 5, { fontSize: 10, bold: true })
-    xPos += colWidths[2]
-    addText('Amount', xPos, yPos + 5, { fontSize: 10, bold: true })
+    addText('Feed Name', xPos, yPos + 5, { fontSize: 9, bold: true })
+    xPos += feedColWidths[0]
+    addText('Weight', xPos, yPos + 5, { fontSize: 9, bold: true })
+    xPos += feedColWidths[1]
+    addText('Qty Sold', xPos, yPos + 5, { fontSize: 9, bold: true })
+    xPos += feedColWidths[2]
+    addText('Avg Price', xPos, yPos + 5, { fontSize: 9, bold: true })
+    xPos += feedColWidths[3]
+    addText('Total Amount', xPos, yPos + 5, { fontSize: 9, bold: true })
     yPos += 10
 
-    // Table Rows (limit to 15 for overview)
-    bills.slice(0, 15).forEach((bill, index) => {
-      if (yPos > pageHeight - 30) {
+    // Feed Sales Rows
+    feedSales.forEach((feed, index) => {
+      // Check if we need a new page before adding this row
+      if (yPos + 7 > pageHeight - margin) {
         doc.addPage()
         yPos = margin
-      }
-        const bgColor = index % 2 === 0 ? [248, 250, 252] : [255, 255, 255]
-        doc.setFillColor(bgColor[0], bgColor[1], bgColor[2])
+        // Redraw headers on new page
+        doc.setFillColor(30, 64, 175)
         doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
-        doc.setTextColor(0, 0, 0)
+        doc.setTextColor(255, 255, 255)
         xPos = margin + 2
-        addText(bill.billNumber, xPos, yPos + 5, { fontSize: 9 })
-        xPos += colWidths[0]
-        addText(safeText(bill.user.name) || '[No Name]', xPos, yPos + 5, { fontSize: 9 })
-        xPos += colWidths[1]
-        addText(new Date(bill.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }), xPos, yPos + 5, { fontSize: 9 })
-        xPos += colWidths[2]
-        doc.setTextColor(5, 150, 105) // Green for amount
-        addText(`Rs. ${formatCurrency(bill.totalAmount)}`, xPos, yPos + 5, { fontSize: 9, bold: true })
-        doc.setTextColor(0, 0, 0)
-      yPos += 8
-    })
-
-      if (bills.length > 15) {
-        yPos += 5
-        doc.setTextColor(102, 102, 102) // Gray
-        addText(`... and ${bills.length - 15} more bills (see detailed pages)`, margin, yPos, { fontSize: 9 })
-        doc.setTextColor(0, 0, 0)
+        addText('Feed Name', xPos, yPos + 5, { fontSize: 9, bold: true })
+        xPos += feedColWidths[0]
+        addText('Weight', xPos, yPos + 5, { fontSize: 9, bold: true })
+        xPos += feedColWidths[1]
+        addText('Qty Sold', xPos, yPos + 5, { fontSize: 9, bold: true })
+        xPos += feedColWidths[2]
+        addText('Avg Price', xPos, yPos + 5, { fontSize: 9, bold: true })
+        xPos += feedColWidths[3]
+        addText('Total Amount', xPos, yPos + 5, { fontSize: 9, bold: true })
         yPos += 10
       }
 
-    // Individual Bill Details
+      const bgColor = index % 2 === 0 ? [248, 250, 252] : [255, 255, 255]
+      doc.setFillColor(bgColor[0], bgColor[1], bgColor[2])
+        doc.rect(margin, yPos, pageWidth - margin * 2, 7, 'F')
+      doc.setTextColor(0, 0, 0)
+      
+      xPos = margin + 2
+      addText(safeText(feed.feedName), xPos, yPos + 4.5, { fontSize: 9 })
+      xPos += feedColWidths[0]
+      addText(`${feed.feedWeight} kg`, xPos, yPos + 4.5, { fontSize: 9 })
+      xPos += feedColWidths[1]
+      addText(feed.totalQuantity.toFixed(0), xPos, yPos + 4.5, { fontSize: 9 })
+      xPos += feedColWidths[2]
+      addText(`Rs. ${feed.averagePrice.toFixed(2)}`, xPos, yPos + 4.5, { fontSize: 9 })
+      xPos += feedColWidths[3]
+      doc.setTextColor(5, 150, 105) // Green
+      addText(`Rs. ${formatCurrency(feed.totalAmount)}`, xPos, yPos + 4.5, { fontSize: 9, bold: true })
+      doc.setTextColor(0, 0, 0)
+      yPos += 7
+    })
+
+    // ============================================
+    // PAGE 2+: INDIVIDUAL BILLS (ONE BILL PER PAGE)
+    // ============================================
+    
+    // Always start bills section on a new page
+    // Check if current page has enough space, if not add new page
+    if (yPos + 150 > pageHeight - margin) {
+      doc.addPage()
+      yPos = margin
+    } else {
+      // Add new page to ensure bills start on separate page from summary
+      doc.addPage()
+      yPos = margin
+    }
+    
     bills.forEach((bill, billIndex) => {
-      if (billIndex > 0 || yPos > pageHeight - 50) {
+      // Always start each bill on a new page (except first one which is already on new page)
+      if (billIndex > 0) {
         doc.addPage()
         yPos = margin
       }
 
-      // Bill Header with colors
-      doc.setFillColor(30, 64, 175) // Blue
-      doc.rect(0, 0, pageWidth, 25, 'F')
+      // Bill Header
+      doc.setFillColor(30, 64, 175)
+      doc.rect(0, 0, pageWidth, 30, 'F')
       doc.setTextColor(255, 255, 255)
-      addText("Gurudatta trader's", pageWidth / 2, 12, { fontSize: 22, bold: true, maxWidth: pageWidth - margin * 2, align: 'center' })
-      
-      doc.setFillColor(59, 130, 246) // Lighter blue
-      doc.rect(0, 25, pageWidth, 15, 'F')
-      addText('Bill Invoice', pageWidth / 2, 33, { fontSize: 14, bold: true, maxWidth: pageWidth - margin * 2, align: 'center' })
+      addText("Gurudatta trader's", pageWidth / 2, 15, { fontSize: 20, bold: true, align: 'center' })
+      addText('Bill Invoice', pageWidth / 2, 25, { fontSize: 14, bold: true, align: 'center' })
       
       doc.setTextColor(0, 0, 0)
-      yPos = 50
+      yPos = 40
 
-      // Bill Info
-      doc.setFillColor(99, 102, 241) // Indigo
+      // Bill Number and Date
+      doc.setFillColor(99, 102, 241)
       doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
       doc.setTextColor(255, 255, 255)
       addText(`Bill Number: ${bill.billNumber}`, margin + 4, yPos + 5, { fontSize: 11, bold: true })
       yPos += 10
 
-      doc.setFillColor(243, 244, 246) // Light gray
+      doc.setFillColor(243, 244, 246)
       doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
       doc.setTextColor(0, 0, 0)
       const billDate = new Date(bill.createdAt).toLocaleDateString('en-IN', { 
@@ -319,43 +385,43 @@ export async function GET(request: NextRequest) {
         day: 'numeric' 
       })
       addText(`Date: ${billDate}`, margin + 4, yPos + 5, { fontSize: 10 })
-      yPos += 15
+      yPos += 12
 
       // Customer Information
-      doc.setFillColor(16, 185, 129) // Green
+      doc.setFillColor(16, 185, 129)
       doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
       doc.setTextColor(255, 255, 255)
-      addText('Customer Information', margin + 4, yPos + 5, { fontSize: 12, bold: true })
+      addText('Customer Information', margin + 4, yPos + 5, { fontSize: 11, bold: true })
       yPos += 10
 
       doc.setFillColor(255, 255, 255)
       doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
       doc.setTextColor(0, 0, 0)
       addText(`Name: ${safeText(bill.user.name) || '[No Name]'}`, margin + 4, yPos + 5, { fontSize: 10 })
-      yPos += 10
+      yPos += 8
 
-      doc.setFillColor(243, 244, 246) // Light gray
+      doc.setFillColor(243, 244, 246)
       doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
       addText(`Mobile: ${bill.user.mobileNo}`, margin + 4, yPos + 5, { fontSize: 10 })
-      yPos += 10
+      yPos += 8
 
       if (bill.user.address) {
         doc.setFillColor(255, 255, 255)
         doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
         addText(`Address: ${safeText(bill.user.address)}`, margin + 4, yPos + 5, { fontSize: 10 })
-        yPos += 10
+        yPos += 8
       }
       yPos += 5
 
-      // Items Table Header
-      doc.setFillColor(139, 92, 246) // Purple
+      // Items Table
+      doc.setFillColor(139, 92, 246)
       doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
       doc.setTextColor(255, 255, 255)
-      addText('Items', pageWidth / 2, yPos + 5, { fontSize: 12, bold: true, maxWidth: pageWidth - margin * 2, align: 'center' })
+      addText('Items', pageWidth / 2, yPos + 5, { fontSize: 11, bold: true, align: 'center' })
       yPos += 10
 
       // Items Table Headers
-      doc.setFillColor(30, 64, 175) // Blue
+      doc.setFillColor(30, 64, 175)
       doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
       doc.setTextColor(255, 255, 255)
       const itemColWidths = [
@@ -379,7 +445,8 @@ export async function GET(request: NextRequest) {
 
       // Items Rows
       bill.items.forEach((item, itemIndex) => {
-        if (yPos > pageHeight - 30) {
+        if (yPos > pageHeight - 50) {
+          // Should not happen as each bill is on separate page, but just in case
           doc.addPage()
           yPos = margin
         }
@@ -396,53 +463,46 @@ export async function GET(request: NextRequest) {
         xPos += itemColWidths[2]
         addText(`Rs. ${parseFloat(item.unitPrice.toString()).toFixed(2)}`, xPos, yPos + 5, { fontSize: 9 })
         xPos += itemColWidths[3]
-        doc.setTextColor(5, 150, 105) // Green for total
+        doc.setTextColor(5, 150, 105) // Green
         addText(`Rs. ${parseFloat(item.totalPrice.toString()).toFixed(2)}`, xPos, yPos + 5, { fontSize: 9, bold: true })
         doc.setTextColor(0, 0, 0)
         yPos += 8
       })
-      yPos += 5
+      yPos += 8
 
-      // Summary - Right aligned
-      const summaryWidth = 85
+      // Summary Section - Right aligned, single line per item
+      const summaryWidth = 80
       const summaryX = pageWidth - margin - summaryWidth
       
-      doc.setFillColor(99, 102, 241) // Indigo
+      doc.setFillColor(99, 102, 241)
       doc.rect(summaryX, yPos, summaryWidth, 8, 'F')
-      doc.setTextColor(255, 255, 255)
-      addText('Summary', summaryX + summaryWidth / 2, yPos + 5, { fontSize: 12, bold: true, maxWidth: summaryWidth, align: 'center' })
+          doc.setTextColor(255, 255, 255)
+      addText('Summary', summaryX + summaryWidth / 2, yPos + 5, { fontSize: 11, bold: true, align: 'center' })
       yPos += 10
 
-      doc.setFillColor(255, 255, 255)
-      doc.rect(summaryX, yPos, summaryWidth, 8, 'F')
-      doc.setTextColor(0, 0, 0)
-      addText(`Total Amount: Rs. ${parseFloat(bill.totalAmount.toString()).toFixed(2)}`, summaryX + 2, yPos + 5, { fontSize: 10 })
-      doc.setTextColor(5, 150, 105) // Green
-      addText(`Rs. ${parseFloat(bill.totalAmount.toString()).toFixed(2)}`, summaryX + summaryWidth - 2, yPos + 5, { fontSize: 10, bold: true })
-      doc.setTextColor(0, 0, 0)
-      yPos += 10
-
-      // Only show Paid Amount if > 0
+      // Paid Amount (if > 0)
       if (parseFloat(bill.paidAmount.toString()) > 0) {
-        doc.setFillColor(243, 244, 246) // Light gray
-        doc.rect(summaryX, yPos, summaryWidth, 8, 'F')
-        addText(`Paid Amount: Rs. ${parseFloat(bill.paidAmount.toString()).toFixed(2)}`, summaryX + 2, yPos + 5, { fontSize: 10 })
-        doc.setTextColor(59, 130, 246) // Blue
-        addText(`Rs. ${parseFloat(bill.paidAmount.toString()).toFixed(2)}`, summaryX + summaryWidth - 2, yPos + 5, { fontSize: 10, bold: true })
-        doc.setTextColor(0, 0, 0)
-        yPos += 10
+        doc.setFillColor(243, 244, 246)
+        doc.rect(summaryX, yPos, summaryWidth, 7, 'F')
+          doc.setTextColor(0, 0, 0)
+        addText(`Paid Amount: Rs. ${parseFloat(bill.paidAmount.toString()).toFixed(2)}`, summaryX + 2, yPos + 4.5, { fontSize: 9 })
+        yPos += 8
       }
 
-      // Only show Pending Amount if > 0
+      // Pending Amount (if > 0)
       if (parseFloat(bill.pendingAmount.toString()) > 0) {
         doc.setFillColor(255, 255, 255)
-        doc.rect(summaryX, yPos, summaryWidth, 8, 'F')
-        addText(`Pending: Rs. ${parseFloat(bill.pendingAmount.toString()).toFixed(2)}`, summaryX + 2, yPos + 5, { fontSize: 10 })
-        doc.setTextColor(239, 68, 68) // Red
-        addText(`Rs. ${parseFloat(bill.pendingAmount.toString()).toFixed(2)}`, summaryX + summaryWidth - 2, yPos + 5, { fontSize: 10, bold: true })
+        doc.rect(summaryX, yPos, summaryWidth, 7, 'F')
         doc.setTextColor(0, 0, 0)
-        yPos += 10
+        addText(`Pending Amount: Rs. ${parseFloat(bill.pendingAmount.toString()).toFixed(2)}`, summaryX + 2, yPos + 4.5, { fontSize: 9 })
+        yPos += 8
       }
+
+      // Total Amount (always shown)
+      doc.setFillColor(255, 255, 255)
+      doc.rect(summaryX, yPos, summaryWidth, 7, 'F')
+      doc.setTextColor(0, 0, 0)
+      addText(`Total Amount: Rs. ${parseFloat(bill.totalAmount.toString()).toFixed(2)}`, summaryX + 2, yPos + 4.5, { fontSize: 9, bold: true })
     })
 
     // Generate PDF buffer

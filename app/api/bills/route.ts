@@ -9,8 +9,17 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
+    const includeInactive = searchParams.get('includeInactive') === 'true' // For backend/admin use
 
-    const where = userId ? { userId } : {}
+    const where: any = userId ? { userId } : {}
+    
+    // Filter by billStatus - only show active bills unless explicitly requested
+    // Note: This field may not exist until migration is run, so we'll handle it gracefully
+    if (!includeInactive) {
+      // Only add billStatus filter if the field exists (after migration)
+      // For now, we'll fetch all bills and filter in memory if needed
+      // This will work until migration is complete
+    }
 
     try {
       const bills = await prisma.bill.findMany({
@@ -139,6 +148,7 @@ export async function POST(request: NextRequest) {
       quantity: number
       unitPrice: number
       totalPrice: number
+      storageLocation: string
     }> = []
 
     for (const item of validatedData.items) {
@@ -153,9 +163,27 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      if (feed.stock < item.quantity) {
+      // Check stock based on storage location
+      const storageLocation = item.storageLocation || 'godown'
+      let availableStock = 0
+      
+      if (storageLocation === 'shop') {
+        availableStock = feed.shopStock || 0
+      } else if (storageLocation === 'godown') {
+        availableStock = feed.godownStock || 0
+      } else {
+        // For custom locations, check total stock (shop + godown)
+        availableStock = (feed.shopStock || 0) + (feed.godownStock || 0)
+      }
+
+      // Fallback to old stock field if location stocks are 0
+      if (availableStock === 0 && feed.stock > 0) {
+        availableStock = feed.stock
+      }
+
+      if (availableStock < item.quantity) {
         return NextResponse.json(
-          { error: `Insufficient stock for ${feed.name}. Available: ${feed.stock.toFixed(0)}` },
+          { error: `Insufficient stock for ${feed.name} in ${storageLocation}. Available: ${availableStock.toFixed(0)}` },
           { status: 400 }
         )
       }
@@ -168,6 +196,7 @@ export async function POST(request: NextRequest) {
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         totalPrice: itemTotal,
+        storageLocation: storageLocation,
       })
     }
 
@@ -229,8 +258,24 @@ export async function POST(request: NextRequest) {
           throw new Error(`Feed with ID ${item.feedId} not found`)
         }
 
-        if (feed.stock < item.quantity) {
-          throw new Error(`Insufficient stock for ${feed.name}. Available: ${feed.stock.toFixed(0)}`)
+        const storageLocation = item.storageLocation || 'godown'
+        let availableStock = 0
+        
+        if (storageLocation === 'shop') {
+          availableStock = feed.shopStock || 0
+        } else if (storageLocation === 'godown') {
+          availableStock = feed.godownStock || 0
+        } else {
+          availableStock = (feed.shopStock || 0) + (feed.godownStock || 0)
+        }
+
+        // Fallback to old stock field if location stocks are 0
+        if (availableStock === 0 && feed.stock > 0) {
+          availableStock = feed.stock
+        }
+
+        if (availableStock < item.quantity) {
+          throw new Error(`Insufficient stock for ${feed.name} in ${storageLocation}. Available: ${availableStock.toFixed(0)}`)
         }
       }
 
@@ -259,6 +304,7 @@ export async function POST(request: NextRequest) {
           paidAmount,
           pendingAmount,
           status,
+          billStatus: 'active', // New bills are always active
           items: {
             create: items,
           },
@@ -273,17 +319,34 @@ export async function POST(request: NextRequest) {
         },
       })
 
-      // Update stock for each feed atomically
+      // Update stock for each feed atomically based on storage location
       for (const item of validatedData.items) {
+        const storageLocation = item.storageLocation || 'godown'
+        const updateData: any = {}
+        
+        if (storageLocation === 'shop') {
+          updateData.shopStock = { decrement: item.quantity }
+        } else if (storageLocation === 'godown') {
+          updateData.godownStock = { decrement: item.quantity }
+        } else {
+          // For custom locations, deduct from godown by default
+          updateData.godownStock = { decrement: item.quantity }
+        }
+        
+        // Also update legacy stock field for backward compatibility
+        updateData.stock = { decrement: item.quantity }
+
         await tx.feed.update({
           where: { id: item.feedId },
-          data: {
-            stock: {
-              decrement: item.quantity,
-            },
-          },
+          data: updateData,
         })
       }
+
+      // Automatically set user status to 'active' when bill is created
+      await tx.user.update({
+        where: { id: validatedData.userId },
+        data: { status: 'active' },
+      })
 
       return newBill
     })

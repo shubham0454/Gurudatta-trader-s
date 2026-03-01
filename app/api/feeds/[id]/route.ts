@@ -79,17 +79,15 @@ export async function DELETE(
   try {
     authMiddleware(request)
 
-    // Delete all bill items that reference this feed first
-    await prisma.billItem.deleteMany({
-      where: { feedId: params.id },
-    })
-
-    // Then delete the feed
-    await prisma.feed.delete({
+    // Soft delete: Set status to 'inactive' instead of deleting
+    const feed = await prisma.feed.update({
       where: { id: params.id },
+      data: {
+        status: 'inactive',
+      },
     })
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, feed })
   } catch (error: any) {
     if (error.status === 401) {
       return error

@@ -7,16 +7,34 @@ export async function GET(request: NextRequest) {
   try {
     authMiddleware(request)
 
-    const feeds = await prisma.feed.findMany({
-      orderBy: { name: 'asc' },
-      include: {
-        billItems: {
-          select: {
-            quantity: true,
+    const searchParams = request.nextUrl.searchParams
+    const includeInactive = searchParams.get('includeInactive') === 'true'
+    
+    // Fetch all feeds and filter by status in memory for better compatibility
+    let feeds
+    try {
+      feeds = await prisma.feed.findMany({
+        orderBy: { name: 'asc' },
+        include: {
+          billItems: {
+            select: {
+              quantity: true,
+            },
           },
         },
-      },
-    })
+      })
+      
+      // Filter by status in memory
+      if (!includeInactive) {
+        feeds = feeds.filter((feed: any) => {
+          // Include feeds with status='active' OR feeds without status (null/undefined)
+          return feed.status === undefined || feed.status === null || feed.status === 'active'
+        })
+      }
+    } catch (error: any) {
+      console.error('Error fetching feeds:', error)
+      throw error
+    }
 
     // Calculate sold stock and total stock for each feed
     const feedsWithStats = feeds.map((feed) => {
@@ -32,7 +50,9 @@ export async function GET(request: NextRequest) {
         brand: feed.brand,
         weight: feed.weight,
         defaultPrice: feed.defaultPrice,
-        stock: feed.stock, // Current available stock
+        stock: feed.stock, // Current available stock (legacy)
+        shopStock: feed.shopStock || 0, // Stock in shop
+        godownStock: feed.godownStock || 0, // Stock in godown
         soldStock: soldStock, // Total sold stock
         totalStock: totalStock, // Total stock (current + sold)
         createdAt: feed.createdAt,

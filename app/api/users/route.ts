@@ -16,6 +16,56 @@ export async function GET(request: NextRequest) {
     }
 
     try {
+      // Automatically update user status based on bills
+      // Get all unique userIds from bills (check active bills first, then all bills)
+      let allBills = await prisma.bill.findMany({
+        where: {
+          billStatus: 'active',
+        },
+        select: {
+          userId: true,
+        },
+      })
+
+      // If no active bills, check all bills (any status)
+      if (allBills.length === 0) {
+        allBills = await prisma.bill.findMany({
+          select: {
+            userId: true,
+          },
+        })
+      }
+
+      // Extract unique user IDs
+      const userIdsWithBills = Array.from(new Set(allBills.map((bill) => bill.userId.toString())))
+
+      // Update users with bills to active
+      if (userIdsWithBills.length > 0) {
+        await prisma.user.updateMany({
+          where: {
+            id: {
+              in: userIdsWithBills,
+            },
+          },
+          data: {
+            status: 'active',
+          },
+        })
+      }
+
+      // Update users without bills to inactive
+      await prisma.user.updateMany({
+        where: {
+          id: {
+            notIn: userIdsWithBills.length > 0 ? userIdsWithBills : [],
+          },
+        },
+        data: {
+          status: 'inactive',
+        },
+      })
+
+      // Now fetch users
       const users = await prisma.user.findMany({
         where,
         select: {

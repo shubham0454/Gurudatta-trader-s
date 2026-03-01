@@ -45,10 +45,14 @@ export default function ReportsPage() {
       
       const data = await response.json()
       const usersList = Array.isArray(data.users) ? data.users : []
-      // Filter to show only active users
+      // Filter to show only active users, then sort by name
       const activeUsers = usersList.filter((user: any) => !user.status || user.status === 'active')
-      setAllUsers(activeUsers)
-      setUsers(activeUsers)
+      const sortedUsers = [...activeUsers].sort((a: any, b: any) => {
+        // Sort by name alphabetically
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+      })
+      setAllUsers(sortedUsers)
+      setUsers(sortedUsers)
     } catch (error) {
       console.error('Error fetching users:', error)
       setAllUsers([])
@@ -180,7 +184,23 @@ export default function ReportsPage() {
                         return matchesType && matchesSearch
                       })
 
-                      if (filteredUsers.length === 0) {
+                      // Sort filtered users: active first, then inactive, both sorted by name
+                      const sortedFilteredUsers = [...filteredUsers].sort((a, b) => {
+                        const aStatus = a.status || 'active'
+                        const bStatus = b.status || 'active'
+                        
+                        if (aStatus === 'active' && bStatus === 'inactive') {
+                          return -1 // active comes first
+                        }
+                        if (aStatus === 'inactive' && bStatus === 'active') {
+                          return 1 // active comes first
+                        }
+                        
+                        // If same status, sort by name alphabetically
+                        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+                      })
+
+                      if (sortedFilteredUsers.length === 0) {
                         return (
                           <div className="px-4 py-3 text-sm text-slate-400 text-center">
                             No users found
@@ -188,7 +208,7 @@ export default function ReportsPage() {
                         )
                       }
 
-                      return filteredUsers.map((user) => (
+                      return sortedFilteredUsers.map((user) => (
                         <button
                           key={user.id}
                           type="button"
