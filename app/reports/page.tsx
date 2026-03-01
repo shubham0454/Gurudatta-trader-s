@@ -11,8 +11,8 @@ export default function ReportsPage() {
   const router = useRouter()
   const [reportType, setReportType] = useState<'today' | 'monthly' | 'yearly'>('monthly')
   const [userId, setUserId] = useState('')
-  const [users, setUsers] = useState<Array<{ id: string; name: string; mobileNo: string; userType?: string }>>([])
-  const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; mobileNo: string; userType?: string }>>([]) // Store all users for search
+  const [users, setUsers] = useState<Array<{ id: string; name: string; mobileNo: string; userType?: string; status?: string }>>([])
+  const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; mobileNo: string; userType?: string; status?: string }>>([]) // Store all users for search
   const [userSearchQuery, setUserSearchQuery] = useState('')
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false)
   const [userTypeFilter, setUserTypeFilter] = useState<string>('all') // 'all', 'BMC', 'Dabhadi'
