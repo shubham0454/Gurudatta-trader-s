@@ -10,55 +10,51 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const includeInactive = searchParams.get('includeInactive') === 'true'
     
-    // Fetch all feeds and filter by status in memory for better compatibility
-    let feeds
-    try {
-      feeds = await prisma.feed.findMany({
+    // Fetch feeds and sold stock in parallel for faster response (no heavy include)
+    const [feeds, soldByFeed] = await Promise.all([
+      prisma.feed.findMany({
         orderBy: { name: 'asc' },
-        include: {
-          billItems: {
-            select: {
-              quantity: true,
-            },
-          },
+        select: {
+          id: true,
+          name: true,
+          brand: true,
+          weight: true,
+          defaultPrice: true,
+          stock: true,
+          shopStock: true,
+          godownStock: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
         },
+      }),
+      prisma.billItem.groupBy({
+        by: ['feedId'],
+        _sum: { quantity: true },
+      }),
+    ])
+
+    const soldMap = new Map(soldByFeed.map((row) => [row.feedId, row._sum.quantity || 0]))
+
+    const feedsWithStats = feeds
+      .filter((feed: any) => includeInactive || feed.status == null || feed.status === 'active')
+      .map((feed) => {
+        const soldStock = soldMap.get(feed.id) || 0
+        return {
+          id: feed.id,
+          name: feed.name,
+          brand: feed.brand,
+          weight: feed.weight,
+          defaultPrice: feed.defaultPrice,
+          stock: feed.stock,
+          shopStock: feed.shopStock ?? 0,
+          godownStock: feed.godownStock ?? 0,
+          soldStock,
+          totalStock: feed.stock + soldStock,
+          createdAt: feed.createdAt,
+          updatedAt: feed.updatedAt,
+        }
       })
-      
-      // Filter by status in memory
-      if (!includeInactive) {
-        feeds = feeds.filter((feed: any) => {
-          // Include feeds with status='active' OR feeds without status (null/undefined)
-          return feed.status === undefined || feed.status === null || feed.status === 'active'
-        })
-      }
-    } catch (error: any) {
-      console.error('Error fetching feeds:', error)
-      throw error
-    }
-
-    // Calculate sold stock and total stock for each feed
-    const feedsWithStats = feeds.map((feed) => {
-      // Calculate sold stock (sum of all bill items quantities)
-      const soldStock = feed.billItems.reduce((sum, item) => sum + item.quantity, 0)
-      
-      // Total stock = current stock + sold stock
-      const totalStock = feed.stock + soldStock
-
-      return {
-        id: feed.id,
-        name: feed.name,
-        brand: feed.brand,
-        weight: feed.weight,
-        defaultPrice: feed.defaultPrice,
-        stock: feed.stock, // Current available stock (legacy)
-        shopStock: feed.shopStock || 0, // Stock in shop
-        godownStock: feed.godownStock || 0, // Stock in godown
-        soldStock: soldStock, // Total sold stock
-        totalStock: totalStock, // Total stock (current + sold)
-        createdAt: feed.createdAt,
-        updatedAt: feed.updatedAt,
-      }
-    })
 
     return NextResponse.json({ feeds: feedsWithStats })
   } catch (error: any) {

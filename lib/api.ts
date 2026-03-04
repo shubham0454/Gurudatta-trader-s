@@ -1,4 +1,4 @@
-import { getCached, setCached, invalidateCache } from './cache'
+import { getCached, setCached, invalidateCache, invalidateCachePrefix } from './cache'
 
 // Custom error class for network errors
 export class NetworkError extends Error {
@@ -58,14 +58,15 @@ export async function apiRequest(
     // Invalidate related caches
     if (endpoint.includes('/bills')) {
       invalidateCache('/api/bills')
-      invalidateCache('/api/dashboard/stats')
+      invalidateCachePrefix('/api/dashboard/stats')
     }
     if (endpoint.includes('/users')) {
       invalidateCache('/api/users')
-      invalidateCache('/api/dashboard/stats')
+      invalidateCachePrefix('/api/dashboard/stats')
     }
     if (endpoint.includes('/feeds')) {
       invalidateCache('/api/feeds')
+      invalidateCachePrefix('/api/dashboard/stats')
     }
   }
 

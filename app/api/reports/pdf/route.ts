@@ -18,10 +18,14 @@ export async function GET(request: NextRequest) {
     let endDate = new Date()
 
     if (type === 'custom' && startDateParam && endDateParam) {
-      startDate = new Date(startDateParam)
-      startDate.setHours(0, 0, 0, 0)
-      endDate = new Date(endDateParam)
-      endDate.setHours(23, 59, 59, 999)
+      // Parse as local date (YYYY-MM-DD) to match today/monthly/yearly behaviour and avoid UTC vs local mismatch
+      const parseLocalDate = (isoDate: string, hour: number, min: number, sec: number, ms: number): Date => {
+        const [y, m, d] = isoDate.split('-').map(Number)
+        if (!y || !m || !d) return new Date(isoDate)
+        return new Date(y, m - 1, d, hour, min, sec, ms)
+      }
+      startDate = parseLocalDate(startDateParam, 0, 0, 0, 0)
+      endDate = parseLocalDate(endDateParam, 23, 59, 59, 999)
       if (startDate.getTime() > endDate.getTime()) {
         return NextResponse.json(
           { error: 'Start date must be before or equal to end date' },
@@ -88,12 +92,12 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     })
 
-    // Filter active bills in memory (MongoDB query for billStatus might not work correctly)
+    // Filter active bills: must have at least one item with valid feed (items with missing feed are skipped when rendering)
     bills = bills.filter((bill: any) => {
       const isActive = bill.billStatus === 'active' || bill.billStatus === null || bill.billStatus === undefined
       const hasItems = Array.isArray(bill.items) && bill.items.length > 0
-      // Exclude inactive bills and bills with no line items (prevents empty bill pages)
-      return isActive && hasItems
+      const hasAtLeastOneValidItem = hasItems && bill.items.some((item: any) => item && item.feed)
+      return isActive && hasAtLeastOneValidItem
     })
 
     // Helper function to safely format text

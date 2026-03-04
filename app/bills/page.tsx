@@ -181,6 +181,16 @@ export default function BillsPage() {
     setBillItems([...billItems, { feedId: '', quantity: 0, unitPrice: 0, storageLocation: 'godown' }])
   }
 
+  // Feeds that have stock in the given location only (for bill item dropdown)
+  const getFeedsForLocation = (location: 'shop' | 'godown') =>
+    feeds.filter((feed) => {
+      const shopStock = feed.shopStock || 0
+      const godownStock = feed.godownStock || 0
+      const legacyStock = feed.stock > 0 && !shopStock && !godownStock ? feed.stock : 0
+      if (location === 'shop') return shopStock > 0 || (legacyStock > 0 && !feed.shopStock && !feed.godownStock)
+      return godownStock > 0 || (legacyStock > 0 && !feed.shopStock && !feed.godownStock)
+    })
+
   const updateBillItem = (index: number, field: keyof BillItem, value: string | number) => {
     const updated = [...billItems]
     updated[index] = { ...updated[index], [field]: value }
@@ -278,6 +288,18 @@ export default function BillsPage() {
       }
     }
     
+    setBillItems(updated)
+  }
+
+  const updateBillItemLocation = (index: number, newLocation: 'shop' | 'godown') => {
+    const updated = [...billItems]
+    updated[index] = {
+      ...updated[index],
+      storageLocation: newLocation,
+      feedId: '',
+      quantity: 0,
+      unitPrice: 0,
+    }
     setBillItems(updated)
   }
 
@@ -940,123 +962,82 @@ export default function BillsPage() {
                 </button>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-3 overflow-x-hidden">
                 {billItems.map((item, index) => {
                   const selectedFeed = feeds.find(f => f.id === item.feedId)
                   return (
-                      <div key={index} className="border border-slate-600 rounded-lg p-3 space-y-2 bg-slate-700/50 w-full">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium text-slate-300">Item {index + 1}</span>
+                      <div key={index} className="border border-slate-600 rounded-lg p-3 sm:p-4 space-y-3 bg-slate-700/50 w-full min-w-0">
+                      <div className="flex justify-between items-center gap-2">
+                        <span className="text-sm font-medium text-slate-300 shrink-0">Item {index + 1}</span>
                         <button
                           type="button"
                           onClick={() => removeBillItem(index)}
-                          className="text-red-400 hover:text-red-300 text-sm"
+                          className="text-red-400 hover:text-red-300 text-sm shrink-0 py-1"
                         >
                           Remove
                         </button>
                       </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full">
-                          <div className="md:col-span-2">
-                            <label className="block text-xs text-slate-400 mb-1">Select Feed *</label>
-                      <select
-                        value={item.feedId}
-                        onChange={(e) => updateBillItem(index, 'feedId', e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white text-sm"
-                      >
-                        <option value="">Select Feed</option>
-                              {feeds
-                                .map((feed) => {
-                                  const storageLocation = item.storageLocation || 'godown'
-                                  const shopStock = feed.shopStock || 0
-                                  const godownStock = feed.godownStock || 0
-                                  const legacyStock = (feed.stock > 0 && !feed.shopStock && !feed.godownStock) ? feed.stock : 0
-                                  
-                                  // Show available stock for item's storage location
-                                  let availableStock = 0
-                                  if (storageLocation === 'shop') {
-                                    availableStock = shopStock || (legacyStock > 0 && !feed.shopStock && !feed.godownStock ? legacyStock : 0)
-                                  } else {
-                                    availableStock = godownStock || (legacyStock > 0 && !feed.shopStock && !feed.godownStock ? legacyStock : 0)
-                                  }
-                                  
-                                  // Show stock availability with warning if insufficient
-                                  const stockText = availableStock > 0 
-                                    ? `${storageLocation === 'shop' ? 'Shop' : 'Godown'} Stock: ${availableStock.toFixed(0)}`
-                                    : `No stock in ${storageLocation === 'shop' ? 'Shop' : 'Godown'}`
-                                  
-                                  return (
-                                    <option 
-                                      key={feed.id} 
-                                      value={feed.id}
-                                      disabled={availableStock === 0 && legacyStock === 0}
-                                    >
-                                      {feed.name} {feed.brand ? `(${feed.brand})` : ''} - {feed.weight}kg | {stockText} | ₹{feed.defaultPrice.toFixed(2)} per bag
-                          </option>
-                                  )
-                                })}
-                      </select>
-                          </div>
-                          <div className="w-full">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full min-w-0">
+                          <div className="min-w-0">
                             <label className="block text-xs text-slate-400 mb-1">Stock Location *</label>
                             <select
                               value={item.storageLocation || 'godown'}
-                              onChange={(e) => {
-                                const newLocation = e.target.value as 'shop' | 'godown'
-                                updateBillItem(index, 'storageLocation', newLocation)
-                                // Clear feed selection when location changes (feeds will be filtered differently)
-                                updateBillItem(index, 'feedId', '')
-                                updateBillItem(index, 'quantity', 0)
-                                updateBillItem(index, 'unitPrice', 0)
-                              }}
-                              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white text-sm cursor-pointer"
+                              onChange={(e) => updateBillItemLocation(index, e.target.value as 'shop' | 'godown')}
+                              className="w-full min-w-0 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white text-sm cursor-pointer"
                               style={{ appearance: 'auto' }}
                             >
-                              <option value="shop">Shop</option>
                               <option value="godown">Godown</option>
+                              <option value="shop">Shop</option>
+                            </select>
+                          </div>
+                          <div className="sm:col-span-2 min-w-0">
+                            <label className="block text-xs text-slate-400 mb-1">Select Feed * ({item.storageLocation === 'shop' ? 'Shop' : 'Godown'} only)</label>
+                            <select
+                              value={item.feedId}
+                              onChange={(e) => updateBillItem(index, 'feedId', e.target.value)}
+                              className="w-full min-w-0 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white text-sm"
+                            >
+                              <option value="">Select Feed</option>
+                              {getFeedsForLocation((item.storageLocation || 'godown') as 'shop' | 'godown')
+                                .map((feed) => {
+                                  const loc = item.storageLocation || 'godown'
+                                  const shopStock = feed.shopStock || 0
+                                  const godownStock = feed.godownStock || 0
+                                  const legacyStock = (feed.stock > 0 && !feed.shopStock && !feed.godownStock) ? feed.stock : 0
+                                  const availableStock = loc === 'shop'
+                                    ? shopStock || (legacyStock > 0 && !feed.shopStock && !feed.godownStock ? legacyStock : 0)
+                                    : godownStock || (legacyStock > 0 && !feed.shopStock && !feed.godownStock ? legacyStock : 0)
+                                  const stockText = `${loc === 'shop' ? 'Shop' : 'Godown'} Stock: ${availableStock.toFixed(0)}`
+                                  return (
+                                    <option key={feed.id} value={feed.id}>
+                                      {feed.name} {feed.brand ? `(${feed.brand})` : ''} - {feed.weight}kg | {stockText} | ₹{feed.defaultPrice.toFixed(2)} per bag
+                                    </option>
+                                  )
+                                })}
                             </select>
                           </div>
                         </div>
                       {selectedFeed && (
-                        <div className="mt-2 p-2 bg-blue-900/30 border border-blue-700 rounded-lg text-xs">
-                          <div className="grid grid-cols-3 gap-2">
-                            <div>
+                        <div className="mt-2 p-2 bg-blue-900/30 border border-blue-700 rounded-lg text-xs min-w-0">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            <div className="min-w-0">
                               <span className="text-slate-400">Weight:</span>
                               <span className="font-semibold ml-1 text-white">{selectedFeed.weight} kg</span>
                             </div>
-                              <div>
-                                <span className="text-slate-400">Price:</span>
-                                <span className="font-semibold ml-1 text-white">₹{selectedFeed.defaultPrice.toFixed(2)}</span>
+                            <div className="min-w-0">
+                              <span className="text-slate-400">Price:</span>
+                              <span className="font-semibold ml-1 text-white">₹{selectedFeed.defaultPrice.toFixed(2)}</span>
                             </div>
-                            <div>
-                              <span className="text-slate-400">Available:</span>
-                              <span className={`font-semibold ml-1 ${selectedFeed.stock < 100 ? 'text-red-400' : 'text-green-400'}`}>
-                                {selectedFeed.stock.toFixed(0)}
+                            <div className="min-w-0 col-span-2 sm:col-span-1">
+                              <span className="text-slate-400">{(item.storageLocation || 'godown') === 'shop' ? 'Shop' : 'Godown'} Stock:</span>
+                              <span className={`font-semibold ml-1 ${((item.storageLocation || 'godown') === 'shop' ? (selectedFeed.shopStock || 0) : (selectedFeed.godownStock || 0)) < 50 ? 'text-red-400' : 'text-green-400'}`}>
+                                {((item.storageLocation || 'godown') === 'shop' ? (selectedFeed.shopStock || 0) : (selectedFeed.godownStock || 0)).toFixed(0)}
                               </span>
                             </div>
-                            </div>
-                            {((selectedFeed.shopStock || 0) > 0 || (selectedFeed.godownStock || 0) > 0) && (
-                              <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-blue-800">
-                                {(selectedFeed.shopStock || 0) > 0 && (
-                            <div>
-                                    <span className="text-slate-400">Shop Stock:</span>
-                                    <span className={`font-semibold ml-1 ${(selectedFeed.shopStock || 0) < 50 ? 'text-red-400' : 'text-green-400'}`}>
-                                      {(selectedFeed.shopStock || 0).toFixed(0)}
-                                    </span>
-                            </div>
-                                )}
-                                {(selectedFeed.godownStock || 0) > 0 && (
-                                  <div>
-                                    <span className="text-slate-400">Godown Stock:</span>
-                                    <span className={`font-semibold ml-1 ${(selectedFeed.godownStock || 0) < 50 ? 'text-red-400' : 'text-green-400'}`}>
-                                      {(selectedFeed.godownStock || 0).toFixed(0)}
-                                    </span>
                           </div>
-                                )}
-                              </div>
-                            )}
                         </div>
                       )}
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-2 gap-3 sm:gap-4 min-w-0">
                         <div>
                           <label className="block text-xs text-slate-400 mb-1">Quantity</label>
                           <input
@@ -1305,126 +1286,82 @@ export default function BillsPage() {
                 </button>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-3 overflow-x-hidden">
                 {billItems.map((item, index) => {
                   const selectedFeed = feeds.find(f => f.id === item.feedId)
                   return (
-                    <div key={index} className="border border-slate-600 rounded-lg p-3 space-y-2 bg-slate-700/50">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium text-slate-300">Item {index + 1}</span>
+                    <div key={index} className="border border-slate-600 rounded-lg p-3 sm:p-4 space-y-3 bg-slate-700/50 w-full min-w-0">
+                      <div className="flex justify-between items-center gap-2">
+                        <span className="text-sm font-medium text-slate-300 shrink-0">Item {index + 1}</span>
                         <button
                           type="button"
                           onClick={() => removeBillItem(index)}
-                          className="text-red-400 hover:text-red-300 text-sm"
+                          className="text-red-400 hover:text-red-300 text-sm shrink-0 py-1"
                         >
                           Remove
                         </button>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full">
-                          <div className="md:col-span-2">
-                            <label className="block text-xs text-slate-400 mb-1">Select Feed *</label>
-                      <select
-                        value={item.feedId}
-                        onChange={(e) => updateBillItem(index, 'feedId', e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white text-sm"
-                      >
-                        <option value="">Select Feed</option>
-                              {feeds
-                                .map((feed) => {
-                                  const storageLocation = item.storageLocation || 'godown'
-                                  const shopStock = feed.shopStock || 0
-                                  const godownStock = feed.godownStock || 0
-                                  const legacyStock = (feed.stock > 0 && !feed.shopStock && !feed.godownStock) ? feed.stock : 0
-                                  
-                                  // Show available stock for item's storage location
-                                  let availableStock = 0
-                                  if (storageLocation === 'shop') {
-                                    availableStock = shopStock || (legacyStock > 0 && !feed.shopStock && !feed.godownStock ? legacyStock : 0)
-                                  } else {
-                                    availableStock = godownStock || (legacyStock > 0 && !feed.shopStock && !feed.godownStock ? legacyStock : 0)
-                                  }
-                                  
-                                  // Show stock availability with warning if insufficient
-                                  const stockText = availableStock > 0 
-                                    ? `${storageLocation === 'shop' ? 'Shop' : 'Godown'} Stock: ${availableStock.toFixed(0)}`
-                                    : `No stock in ${storageLocation === 'shop' ? 'Shop' : 'Godown'}`
-                                  
-                                  return (
-                                    <option 
-                                      key={feed.id} 
-                                      value={feed.id}
-                                      disabled={availableStock === 0 && legacyStock === 0}
-                                    >
-                                      {feed.name} {feed.brand ? `(${feed.brand})` : ''} - {feed.weight}kg | {stockText} | ₹{feed.defaultPrice.toFixed(2)} per bag
-                          </option>
-                                  )
-                                })}
-                      </select>
-                          </div>
-                          <div className="w-full">
-                            <label className="block text-xs text-slate-400 mb-1">Stock Location *</label>
-                            <select
-                              value={item.storageLocation || 'godown'}
-                              onChange={(e) => {
-                                const newLocation = e.target.value as 'shop' | 'godown'
-                                updateBillItem(index, 'storageLocation', newLocation)
-                                // Clear feed selection when location changes (feeds will be filtered differently)
-                                updateBillItem(index, 'feedId', '')
-                                updateBillItem(index, 'quantity', 0)
-                                updateBillItem(index, 'unitPrice', 0)
-                              }}
-                              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white text-sm cursor-pointer"
-                              style={{ appearance: 'auto' }}
-                            >
-                              <option value="shop">Shop</option>
-                              <option value="godown">Godown</option>
-                            </select>
-                          </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full min-w-0">
+                        <div className="min-w-0">
+                          <label className="block text-xs text-slate-400 mb-1">Stock Location *</label>
+                          <select
+                            value={item.storageLocation || 'godown'}
+                            onChange={(e) => updateBillItemLocation(index, e.target.value as 'shop' | 'godown')}
+                            className="w-full min-w-0 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white text-sm cursor-pointer"
+                            style={{ appearance: 'auto' }}
+                          >
+                            <option value="godown">Godown</option>
+                            <option value="shop">Shop</option>
+                          </select>
                         </div>
+                        <div className="sm:col-span-2 min-w-0">
+                          <label className="block text-xs text-slate-400 mb-1">Select Feed * ({item.storageLocation === 'shop' ? 'Shop' : 'Godown'} only)</label>
+                          <select
+                            value={item.feedId}
+                            onChange={(e) => updateBillItem(index, 'feedId', e.target.value)}
+                            className="w-full min-w-0 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white text-sm"
+                          >
+                            <option value="">Select Feed</option>
+                            {getFeedsForLocation((item.storageLocation || 'godown') as 'shop' | 'godown')
+                              .map((feed) => {
+                                const loc = item.storageLocation || 'godown'
+                                const shopStock = feed.shopStock || 0
+                                const godownStock = feed.godownStock || 0
+                                const legacyStock = (feed.stock > 0 && !feed.shopStock && !feed.godownStock) ? feed.stock : 0
+                                const availableStock = loc === 'shop'
+                                  ? shopStock || (legacyStock > 0 && !feed.shopStock && !feed.godownStock ? legacyStock : 0)
+                                  : godownStock || (legacyStock > 0 && !feed.shopStock && !feed.godownStock ? legacyStock : 0)
+                                const stockText = `${loc === 'shop' ? 'Shop' : 'Godown'} Stock: ${availableStock.toFixed(0)}`
+                                return (
+                                  <option key={feed.id} value={feed.id}>
+                                    {feed.name} {feed.brand ? `(${feed.brand})` : ''} - {feed.weight}kg | {stockText} | ₹{feed.defaultPrice.toFixed(2)} per bag
+                                  </option>
+                                )
+                              })}
+                          </select>
+                        </div>
+                      </div>
                       {selectedFeed && (
-                        <div className="mt-2 p-2 bg-blue-900/30 border border-blue-700 rounded-lg text-xs">
-                          <div className="grid grid-cols-3 gap-2">
-                            <div>
+                        <div className="mt-2 p-2 bg-blue-900/30 border border-blue-700 rounded-lg text-xs min-w-0">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            <div className="min-w-0">
                               <span className="text-slate-400">Weight:</span>
                               <span className="font-semibold ml-1 text-white">{selectedFeed.weight} kg</span>
                             </div>
-                            <div>
-                              <span className="text-slate-400">Available:</span>
-                              <span className={`font-semibold ml-1 ${selectedFeed.stock < 100 ? 'text-red-400' : 'text-green-400'}`}>
-                                {selectedFeed.stock.toFixed(0)}
+                            <div className="min-w-0">
+                              <span className="text-slate-400">{(item.storageLocation || 'godown') === 'shop' ? 'Shop' : 'Godown'} Stock:</span>
+                              <span className={`font-semibold ml-1 ${((item.storageLocation || 'godown') === 'shop' ? (selectedFeed.shopStock || 0) : (selectedFeed.godownStock || 0)) < 50 ? 'text-red-400' : 'text-green-400'}`}>
+                                {((item.storageLocation || 'godown') === 'shop' ? (selectedFeed.shopStock || 0) : (selectedFeed.godownStock || 0)).toFixed(0)}
                               </span>
                             </div>
-                            <div>
+                            <div className="min-w-0 col-span-2 sm:col-span-1">
                               <span className="text-slate-400">Price:</span>
                               <span className="font-semibold ml-1 text-white">₹{selectedFeed.defaultPrice.toFixed(2)}</span>
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-blue-800">
-                            <div>
-                              <span className="text-slate-400">Shop Stock:</span>
-                              <span className={`font-semibold ml-1 ${(selectedFeed.shopStock || 0) < 50 ? 'text-red-400' : 'text-green-400'}`}>
-                                {(selectedFeed.shopStock || 0).toFixed(0)}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-slate-400">Godown Stock:</span>
-                              <span className={`font-semibold ml-1 ${(selectedFeed.godownStock || 0) < 50 ? 'text-red-400' : 'text-green-400'}`}>
-                                {(selectedFeed.godownStock || 0).toFixed(0)}
-                              </span>
-                            </div>
-                          </div>
                         </div>
                       )}
-                      {selectedFeed && (
-                        <p className="text-xs text-slate-400 mt-1">
-                          Available in {item.storageLocation || 'godown'}: {
-                            item.storageLocation === 'shop' 
-                              ? (selectedFeed.shopStock || 0).toFixed(0)
-                              : (selectedFeed.godownStock || 0).toFixed(0)
-                          }
-                        </p>
-                      )}
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-2 gap-3 sm:gap-4 min-w-0">
                         <div>
                           <label className="block text-xs text-slate-400 mb-1">Quantity</label>
                           <input
@@ -1437,8 +1374,9 @@ export default function BillsPage() {
                             max={(() => {
                               if (!selectedFeed) return 0
                               const location = item.storageLocation || 'godown'
-                              if (location === 'shop') return selectedFeed.shopStock || 0
-                              if (location === 'godown') return selectedFeed.godownStock || 0
+                              const legacy = selectedFeed.stock > 0 && !selectedFeed.shopStock && !selectedFeed.godownStock ? selectedFeed.stock : 0
+                              if (location === 'shop') return selectedFeed.shopStock || legacy
+                              if (location === 'godown') return selectedFeed.godownStock || legacy
                               return selectedFeed.stock || 0
                             })()}
                           />

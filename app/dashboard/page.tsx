@@ -37,7 +37,7 @@ export default function DashboardPage() {
         headers: {
           Authorization: `Bearer ${token}`,
         },
-      }, false)
+      }, true)
 
       if (response.status === 401) {
         router.push('/login')
@@ -61,7 +61,7 @@ export default function DashboardPage() {
         headers: {
           Authorization: `Bearer ${token}`,
         },
-      }, false) // Don't use cache when period changes
+      }, true)
 
       if (response.status === 401) {
         router.push('/login')

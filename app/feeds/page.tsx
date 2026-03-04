@@ -35,17 +35,31 @@ export default function FeedsPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [feedToDelete, setFeedToDelete] = useState<Feed | null>(null)
   const [newFeedLocation, setNewFeedLocation] = useState<'shop' | 'godown'>('godown') // Location for new feed stock
+  const [editFeedLocation, setEditFeedLocation] = useState<'shop' | 'godown'>('godown') // When editing: stock in one place only
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
+
+  const emptyFeedValues: FeedInput = {
+    name: '',
+    brand: '',
+    weight: 0,
+    defaultPrice: 0,
+    stock: 0,
+    shopStock: 0,
+    godownStock: 0,
+  }
 
   const {
     register,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<FeedInput>({
     resolver: zodResolver(feedSchema),
+    defaultValues: emptyFeedValues,
   })
 
   useEffect(() => {
@@ -135,13 +149,15 @@ export default function FeedsPage() {
           feedData.godownStock = data.stock || 0
         }
       } else {
-        // For editing, use form values for shop/godown stock
-        // All remaining stock should be in godown (as per user requirement)
-        feedData.shopStock = data.shopStock || 0
-        feedData.godownStock = data.godownStock || 0
-        
-        // Update legacy stock to be sum of shop and godown
-        feedData.stock = (data.shopStock || 0) + (data.godownStock || 0)
+        // For editing: stock is in one location only (godown OR shop)
+        if (editFeedLocation === 'shop') {
+          feedData.shopStock = data.shopStock ?? 0
+          feedData.godownStock = 0
+        } else {
+          feedData.shopStock = 0
+          feedData.godownStock = data.godownStock ?? 0
+        }
+        feedData.stock = feedData.shopStock + feedData.godownStock
       }
 
       const response = await apiRequest(url, {
@@ -156,7 +172,8 @@ export default function FeedsPage() {
         setIsModalOpen(false)
         reset()
         setEditingFeed(null)
-        setNewFeedLocation('godown') // Reset to default
+        setNewFeedLocation('godown')
+        setEditFeedLocation('godown')
         fetchFeeds()
         showToast(editingFeed ? 'Feed updated successfully!' : 'Feed created successfully!', 'success')
       } else {
@@ -175,14 +192,20 @@ export default function FeedsPage() {
 
   const handleEdit = (feed: Feed) => {
     setEditingFeed(feed)
+    const shopStock = feed.shopStock || 0
+    const godownStock = feed.godownStock || 0
+    // Show only one location: whichever has stock; if both, prefer godown
+    const location: 'shop' | 'godown' = godownStock > 0 ? 'godown' : 'shop'
+    const totalStock = shopStock + godownStock
+    setEditFeedLocation(location)
     reset({
       name: feed.name,
       brand: feed.brand || '',
       weight: feed.weight,
       defaultPrice: feed.defaultPrice,
       stock: feed.stock,
-      shopStock: feed.shopStock || 0,
-      godownStock: feed.godownStock || 0,
+      shopStock: location === 'shop' ? totalStock : 0,
+      godownStock: location === 'godown' ? totalStock : 0,
     })
     setIsModalOpen(true)
   }
@@ -255,7 +278,9 @@ export default function FeedsPage() {
           <button
             onClick={() => {
               setEditingFeed(null)
-              reset()
+              setNewFeedLocation('godown')
+              setEditFeedLocation('godown')
+              reset(emptyFeedValues)
               setIsModalOpen(true)
             }}
             className="bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2 text-sm sm:text-base w-full sm:w-auto justify-center"
@@ -285,7 +310,7 @@ export default function FeedsPage() {
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase hidden sm:table-cell">Brand</th>
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">Weight</th>
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase hidden lg:table-cell">Price</th>
-                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">Current Stock</th>
+                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">Stock (Godown or Shop)</th>
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase hidden sm:table-cell">Sold Stock</th>
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase hidden md:table-cell">Total Stock</th>
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-right text-xs font-medium text-slate-200 uppercase">Actions</th>
@@ -318,16 +343,12 @@ export default function FeedsPage() {
                       <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm">
                         <div className="flex flex-col space-y-1">
                           {(() => {
-                            // Show current stock: if shop stock exists, show shop; otherwise show godown
-                            // If both exist, show godown (as per user requirement)
+                            // Each feed has stock in one location only: show that one (Godown or Shop)
                             const shopStock = feed.shopStock || 0
                             const godownStock = feed.godownStock || 0
                             const legacyStock = (feed.stock > 0 && !shopStock && !godownStock) ? feed.stock : 0
-                            
-                            // Determine which stock to show
                             let currentStock = 0
                             let stockLocation = ''
-                            
                             if (godownStock > 0) {
                               currentStock = godownStock
                               stockLocation = 'Godown'
@@ -336,16 +357,15 @@ export default function FeedsPage() {
                               stockLocation = 'Shop'
                             } else if (legacyStock > 0) {
                               currentStock = legacyStock
-                              stockLocation = 'Godown' // Move legacy to godown
+                              stockLocation = 'Godown'
                             }
-                            
                             return (
                               <div className="flex items-center gap-2">
                                 <span className={currentStock < 100 ? 'text-red-400 font-bold' : currentStock < 200 ? 'text-amber-400 font-semibold' : 'text-green-400 font-semibold'}>
                                   {currentStock.toFixed(0)}
                                 </span>
-                                <span className="text-xs text-slate-400 hidden sm:block">
-                                  {stockLocation || 'Stock'}
+                                <span className="text-xs text-slate-400">
+                                  {stockLocation || '—'}
                                 </span>
                               </div>
                             )
@@ -412,7 +432,9 @@ export default function FeedsPage() {
           onClose={() => {
             setIsModalOpen(false)
             setEditingFeed(null)
-            reset()
+            setNewFeedLocation('godown')
+            setEditFeedLocation('godown')
+            reset(emptyFeedValues)
           }}
           title={editingFeed ? 'Edit Feed' : 'Add Feed'}
         >
@@ -578,79 +600,86 @@ export default function FeedsPage() {
             </div>
 
             {!editingFeed && (
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">
-                  Stock Location *
-                </label>
-                <select
-                  value={newFeedLocation}
-                  onChange={(e) => setNewFeedLocation(e.target.value as 'shop' | 'godown')}
-                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white"
-                >
-                  <option value="shop">Shop</option>
-                  <option value="godown">Godown</option>
-                </select>
-                <p className="mt-1 text-xs text-slate-400">
-                  Select where to add the stock
-                </p>
-              </div>
-            )}
-
-            {!editingFeed && (
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">
-                  Stock Quantity *
-                </label>
-                <input
-                  {...register('stock', { valueAsNumber: true })}
-                  type="number"
-                  step="0.01"
-                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white placeholder-slate-400"
-                  placeholder="Enter stock quantity"
-                />
-                {errors.stock && (
-                  <p className="mt-1 text-sm text-red-400">{errors.stock.message}</p>
-                )}
-              </div>
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">
+                    Stock in (one location only) *
+                  </label>
+                  <select
+                    value={newFeedLocation}
+                    onChange={(e) => setNewFeedLocation(e.target.value as 'shop' | 'godown')}
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white"
+                  >
+                    <option value="godown">Godown</option>
+                    <option value="shop">Shop</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">
+                    {newFeedLocation === 'shop' ? 'Shop' : 'Godown'} stock quantity *
+                  </label>
+                  <input
+                    {...register('stock', { valueAsNumber: true })}
+                    type="number"
+                    step="0.01"
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white placeholder-slate-400"
+                    placeholder={`Enter ${newFeedLocation} stock`}
+                  />
+                  {errors.stock && (
+                    <p className="mt-1 text-sm text-red-400">{errors.stock.message}</p>
+                  )}
+                </div>
+              </>
             )}
 
             {editingFeed && (
               <>
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-1">
-                    Shop Stock
+                    Stock location
                   </label>
-                  <input
-                    {...register('shopStock', { valueAsNumber: true })}
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white placeholder-slate-400"
-                    placeholder="Enter shop stock"
-                  />
-                  {errors.shopStock && (
-                    <p className="mt-1 text-sm text-red-400">{errors.shopStock.message}</p>
-                  )}
+                  <select
+                    value={editFeedLocation}
+                    onChange={(e) => {
+                      const loc = e.target.value as 'shop' | 'godown'
+                      setEditFeedLocation(loc)
+                      const total = (watch('shopStock') || 0) + (watch('godownStock') || 0)
+                      setValue('shopStock', loc === 'shop' ? total : 0)
+                      setValue('godownStock', loc === 'godown' ? total : 0)
+                    }}
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white"
+                  >
+                    <option value="godown">Godown</option>
+                    <option value="shop">Shop</option>
+                  </select>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Feed stock is in one location only
+                  </p>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-1">
-                    Godown Stock
+                    {editFeedLocation === 'shop' ? 'Shop' : 'Godown'} stock
                   </label>
                   <input
-                    {...register('godownStock', { valueAsNumber: true })}
                     type="number"
                     step="0.01"
                     min="0"
+                    value={editFeedLocation === 'shop' ? watch('shopStock') ?? '' : watch('godownStock') ?? ''}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value) || 0
+                      setValue(editFeedLocation === 'shop' ? 'shopStock' : 'godownStock', val)
+                      setValue(editFeedLocation === 'shop' ? 'godownStock' : 'shopStock', 0)
+                    }}
                     className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white placeholder-slate-400"
-                    placeholder="Enter godown stock"
+                    placeholder={`Enter ${editFeedLocation} stock`}
                   />
-                  {errors.godownStock && (
+                  {editFeedLocation === 'shop' && errors.shopStock && (
+                    <p className="mt-1 text-sm text-red-400">{errors.shopStock.message}</p>
+                  )}
+                  {editFeedLocation === 'godown' && errors.godownStock && (
                     <p className="mt-1 text-sm text-red-400">{errors.godownStock.message}</p>
                   )}
-                  <p className="mt-1 text-xs text-slate-400">
-                    All remaining stock should be in godown
-                  </p>
                 </div>
               </>
             )}
@@ -676,6 +705,7 @@ export default function FeedsPage() {
                   onClick={() => {
                     setIsModalOpen(false)
                     setEditingFeed(null)
+                    setEditFeedLocation('godown')
                     reset()
                   }}
                   className="px-4 py-2 border border-slate-600 rounded-lg text-slate-300 hover:bg-slate-700"
