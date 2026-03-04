@@ -10,12 +10,25 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type') || 'monthly'
     const userId = searchParams.get('userId')
+    const startDateParam = searchParams.get('startDate')
+    const endDateParam = searchParams.get('endDate')
 
     const now = new Date()
     let startDate: Date
     let endDate = new Date()
 
-    if (type === 'today') {
+    if (type === 'custom' && startDateParam && endDateParam) {
+      startDate = new Date(startDateParam)
+      startDate.setHours(0, 0, 0, 0)
+      endDate = new Date(endDateParam)
+      endDate.setHours(23, 59, 59, 999)
+      if (startDate.getTime() > endDate.getTime()) {
+        return NextResponse.json(
+          { error: 'Start date must be before or equal to end date' },
+          { status: 400 }
+        )
+      }
+    } else if (type === 'today') {
       const today = new Date()
       today.setHours(0, 0, 0, 0)
       startDate = today
@@ -77,8 +90,10 @@ export async function GET(request: NextRequest) {
 
     // Filter active bills in memory (MongoDB query for billStatus might not work correctly)
     bills = bills.filter((bill: any) => {
-      // Include bills with billStatus='active' or bills without billStatus (null/undefined)
-      return bill.billStatus === 'active' || bill.billStatus === null || bill.billStatus === undefined
+      const isActive = bill.billStatus === 'active' || bill.billStatus === null || bill.billStatus === undefined
+      const hasItems = Array.isArray(bill.items) && bill.items.length > 0
+      // Exclude inactive bills and bills with no line items (prevents empty bill pages)
+      return isActive && hasItems
     })
 
     // Helper function to safely format text
@@ -119,7 +134,8 @@ export async function GET(request: NextRequest) {
     const feedSalesMap = new Map<string, FeedSales>()
 
     bills.forEach(bill => {
-      bill.items.forEach(item => {
+      bill.items.forEach((item: any) => {
+        if (!item.feed) return // Skip items with missing feed (e.g. deleted feed)
         const feedKey = `${item.feed.id}_${item.feed.weight}`
         const existing = feedSalesMap.get(feedKey)
         
@@ -145,16 +161,22 @@ export async function GET(request: NextRequest) {
     const feedSales = Array.from(feedSalesMap.values())
       .sort((a, b) => b.totalAmount - a.totalAmount) // Sort by total amount descending
 
-    // Check if no bills found
+    const dateRange = `${new Date(startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} to ${new Date(endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`
+    const reportTypeText = type === 'today' ? 'Today' : type === 'monthly' ? 'This Month' : type === 'yearly' ? 'This Year' : 'Custom Period'
+
+    // Check if no bills found — still return a valid PDF with date range so user sees why it's empty
     if (bills.length === 0) {
-      // Return a PDF with "No data" message
       const doc = new jsPDF()
       const pageWidth = doc.internal.pageSize.getWidth()
-      doc.setFontSize(20)
-      doc.text('No Data Available', pageWidth / 2, 50, { align: 'center' })
+      doc.setFontSize(18)
+      doc.text('Sales Report', pageWidth / 2, 40, { align: 'center' })
       doc.setFontSize(12)
-      const reportTypeText = type === 'today' ? 'Today' : type === 'monthly' ? 'This Month' : 'This Year'
-      doc.text(`No bills found for ${reportTypeText}`, pageWidth / 2, 70, { align: 'center' })
+      doc.text(`Report Period: ${dateRange}`, pageWidth / 2, 55, { align: 'center' })
+      doc.text(`(${reportTypeText})`, pageWidth / 2, 62, { align: 'center' })
+      doc.setFontSize(14)
+      doc.text('No bills found for this period.', pageWidth / 2, 85, { align: 'center' })
+      doc.setFontSize(10)
+      doc.text('There were no bills created between the start date and end date selected.', pageWidth / 2, 95, { align: 'center' })
       const pdfBuffer = Buffer.from(doc.output('arraybuffer'))
       return new NextResponse(pdfBuffer, {
         headers: {
@@ -163,9 +185,6 @@ export async function GET(request: NextRequest) {
         },
       })
     }
-
-    const reportTypeText = type === 'today' ? 'Today' : type === 'monthly' ? 'This Month' : 'This Year'
-    const dateRange = `${new Date(startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} - ${new Date(endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`
 
     // Create PDF document
     const doc = new jsPDF()
@@ -211,10 +230,10 @@ export async function GET(request: NextRequest) {
     doc.setTextColor(0, 0, 0)
     yPos = 40
 
-    // Report Period
+    // Report Period (from start date to end date — so user knows exactly which bills are included)
     doc.setFillColor(243, 244, 246)
     doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
-    addText(`Period: ${dateRange}`, margin + 4, yPos + 5, { fontSize: 10 })
+    addText(`Report period: ${dateRange} (${reportTypeText})`, margin + 4, yPos + 5, { fontSize: 10 })
     addText(`Total Bills: ${bills.length}`, pageWidth - margin - 4, yPos + 5, { fontSize: 10, align: 'right' })
     yPos += 12
 
@@ -444,7 +463,8 @@ export async function GET(request: NextRequest) {
       yPos += 10
 
       // Items Rows
-      bill.items.forEach((item, itemIndex) => {
+      bill.items.forEach((item: any, itemIndex: number) => {
+        if (!item.feed) return // Skip items with missing feed
         if (yPos > pageHeight - 50) {
           // Should not happen as each bill is on separate page, but just in case
           doc.addPage()
@@ -455,7 +475,7 @@ export async function GET(request: NextRequest) {
         doc.rect(margin, yPos, pageWidth - margin * 2, 8, 'F')
         doc.setTextColor(0, 0, 0)
         xPos = margin + 2
-        addText(safeText(item.feed.name), xPos, yPos + 5, { fontSize: 9 })
+        addText(safeText(item.feed?.name), xPos, yPos + 5, { fontSize: 9 })
         xPos += itemColWidths[0]
         addText(`${item.feed.weight} kg`, xPos, yPos + 5, { fontSize: 9 })
         xPos += itemColWidths[1]

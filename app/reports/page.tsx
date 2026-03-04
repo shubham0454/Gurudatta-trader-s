@@ -7,9 +7,21 @@ import { LoadingSpinner } from '@/components/Icons'
 import { apiRequest } from '@/lib/api'
 import { showToast } from '@/components/Toast'
 
+// Default custom range: last 10 days (start = today - 10 days, end = today)
+function getDefaultStartDate(): string {
+  const d = new Date()
+  d.setDate(d.getDate() - 10)
+  return d.toISOString().slice(0, 10)
+}
+function getDefaultEndDate(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
 export default function ReportsPage() {
   const router = useRouter()
-  const [reportType, setReportType] = useState<'today' | 'monthly' | 'yearly'>('monthly')
+  const [reportType, setReportType] = useState<'today' | 'monthly' | 'yearly' | 'custom'>('monthly')
+  const [startDate, setStartDate] = useState(getDefaultStartDate())
+  const [endDate, setEndDate] = useState(getDefaultEndDate())
   const [userId, setUserId] = useState('')
   const [users, setUsers] = useState<Array<{ id: string; name: string; mobileNo: string; userType?: string; status?: string }>>([])
   const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; mobileNo: string; userType?: string; status?: string }>>([]) // Store all users for search
@@ -61,6 +73,14 @@ export default function ReportsPage() {
   }
 
   const handleGeneratePDF = async () => {
+    if (reportType === 'custom') {
+      const start = new Date(startDate)
+      const end = new Date(endDate)
+      if (start > end) {
+        showToast('Start date must be before or equal to end date', 'error')
+        return
+      }
+    }
     setLoading(true)
     try {
       const token = localStorage.getItem('token')
@@ -70,6 +90,10 @@ export default function ReportsPage() {
       if (userId) {
         params.append('userId', userId)
       }
+      if (reportType === 'custom') {
+        params.append('startDate', startDate)
+        params.append('endDate', endDate)
+      }
 
       const response = await fetch(`/api/reports/pdf?${params}`, {
         headers: {
@@ -77,7 +101,10 @@ export default function ReportsPage() {
         },
       })
 
-      if (response.ok) {
+      const contentType = response.headers.get('Content-Type') || ''
+      const isPdf = contentType.includes('application/pdf')
+
+      if (response.ok && isPdf) {
         const blob = await response.blob()
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
@@ -88,8 +115,12 @@ export default function ReportsPage() {
         window.URL.revokeObjectURL(url)
         document.body.removeChild(a)
         showToast('PDF report generated successfully!', 'success')
+      } else if (!response.ok) {
+        const data = isPdf ? null : await response.json().catch(() => ({}))
+        const message = (data && typeof data.error === 'string') ? data.error : 'Failed to generate PDF'
+        showToast(message, 'error')
       } else {
-        showToast('Failed to generate PDF', 'error')
+        showToast('Invalid response from server. Please try again.', 'error')
       }
     } catch (error) {
       console.error('Error generating PDF:', error)
@@ -115,14 +146,50 @@ export default function ReportsPage() {
               </label>
               <select
                 value={reportType}
-                onChange={(e) => setReportType(e.target.value as 'today' | 'monthly' | 'yearly')}
+                onChange={(e) => {
+                  const value = e.target.value as 'today' | 'monthly' | 'yearly' | 'custom'
+                  setReportType(value)
+                  if (value === 'custom') {
+                    setEndDate(getDefaultEndDate())
+                    setStartDate(getDefaultStartDate())
+                  }
+                }}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white"
               >
                 <option value="today">Today</option>
                 <option value="monthly">This Month</option>
                 <option value="yearly">This Year</option>
+                <option value="custom">Custom Date Range</option>
               </select>
             </div>
+
+            {reportType === 'custom' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    min={startDate}
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white"
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="md:col-span-2">
@@ -287,8 +354,9 @@ export default function ReportsPage() {
             <li>• Today: Shows all bills created today</li>
             <li>• This Month: Shows all bills created this month</li>
             <li>• This Year: Shows all bills created this year</li>
+            <li>• Custom Date Range: Pick start and end date — report includes all bills from start date to end date</li>
             <li>• You can filter by a specific user or generate for all users</li>
-            <li>• The PDF includes summary statistics and detailed bill information</li>
+            <li>• The PDF shows the exact period (from date to date) and includes summary statistics and detailed bill information</li>
           </ul>
         </div>
       </div>
