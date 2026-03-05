@@ -427,7 +427,7 @@ export default function UsersPage() {
                                   },
                                 })
                                 if (response.ok) {
-                                  fetchUsers()
+                                  await fetchUsers()
                                   showToast(`User ${newStatus === 'active' ? 'activated' : 'deactivated'} successfully!`, 'success')
                                 } else {
                                   const errorData = await response.json()

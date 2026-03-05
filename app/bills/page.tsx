@@ -646,6 +646,7 @@ export default function BillsPage() {
         </div>
 
         <Modal
+          size="wide"
           isOpen={isModalOpen}
           onClose={() => {
             setIsModalOpen(false)
@@ -1218,6 +1219,7 @@ export default function BillsPage() {
         {/* Quick Bill: Create a bill for a walk-in customer without adding them to the system first. */}
         {false && (
         <Modal
+          size="wide"
           isOpen={isQuickBillOpen}
           onClose={() => {
             setIsQuickBillOpen(false)

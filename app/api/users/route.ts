@@ -16,56 +16,7 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-      // Automatically update user status based on bills
-      // Get all unique userIds from bills (check active bills first, then all bills)
-      let allBills = await prisma.bill.findMany({
-        where: {
-          billStatus: 'active',
-        },
-        select: {
-          userId: true,
-        },
-      })
-
-      // If no active bills, check all bills (any status)
-      if (allBills.length === 0) {
-        allBills = await prisma.bill.findMany({
-          select: {
-            userId: true,
-          },
-        })
-      }
-
-      // Extract unique user IDs
-      const userIdsWithBills = Array.from(new Set(allBills.map((bill) => bill.userId.toString())))
-
-      // Update users with bills to active
-      if (userIdsWithBills.length > 0) {
-        await prisma.user.updateMany({
-          where: {
-            id: {
-              in: userIdsWithBills,
-            },
-          },
-          data: {
-            status: 'active',
-          },
-        })
-      }
-
-      // Update users without bills to inactive
-      await prisma.user.updateMany({
-        where: {
-          id: {
-            notIn: userIdsWithBills.length > 0 ? userIdsWithBills : [],
-          },
-        },
-        data: {
-          status: 'inactive',
-        },
-      })
-
-      // Now fetch users
+      // Fetch users (status is only updated via create or explicit PUT, not overwritten here)
       const users = await prisma.user.findMany({
         where,
         select: {
@@ -179,7 +130,7 @@ export async function POST(request: NextRequest) {
         address: validatedData.address || null,
         email: validatedData.email || null,
         userType: validatedData.userType || 'BMC',
-        status: validatedData.status || 'active',
+        status: 'active', // New users are always created as active
       },
     })
 

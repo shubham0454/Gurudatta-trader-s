@@ -342,12 +342,6 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      // Automatically set user status to 'active' when bill is created
-      await tx.user.update({
-        where: { id: validatedData.userId },
-        data: { status: 'active' },
-      })
-
       return newBill
     })
 

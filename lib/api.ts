@@ -61,7 +61,7 @@ export async function apiRequest(
       invalidateCachePrefix('/api/dashboard/stats')
     }
     if (endpoint.includes('/users')) {
-      invalidateCache('/api/users')
+      invalidateCachePrefix('/api/users')
       invalidateCachePrefix('/api/dashboard/stats')
     }
     if (endpoint.includes('/feeds')) {
