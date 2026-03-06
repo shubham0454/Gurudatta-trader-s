@@ -295,6 +295,13 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Bill date: use provided billDate (YYYY-MM-DD) as local midnight, or server now
+      let createdAt: Date = new Date()
+      if (validatedData.billDate) {
+        const [y, m, d] = validatedData.billDate.split('-').map(Number)
+        createdAt = new Date(y, m - 1, d)
+      }
+
       // Create bill with items
       const newBill = await tx.bill.create({
         data: {
@@ -305,6 +312,7 @@ export async function POST(request: NextRequest) {
           pendingAmount,
           status,
           billStatus: 'active', // New bills are always active
+          createdAt,
           items: {
             create: items,
           },

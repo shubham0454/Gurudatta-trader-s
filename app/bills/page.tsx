@@ -80,6 +80,9 @@ export default function BillsPage() {
   const [userSearchQuery, setUserSearchQuery] = useState('') // For user search in bill creation
   const [userTypeFilterForSelect, setUserTypeFilterForSelect] = useState<string>('all') // For user type filter in bill creation
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false)
+  const getToday = () => new Date().toISOString().slice(0, 10)
+  const [billDate, setBillDate] = useState(getToday) // Bill date (default today), can be changed for backdated bills
+  const [quickBillDate, setQuickBillDate] = useState(getToday)
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -454,6 +457,7 @@ export default function BillsPage() {
           items: itemsWithLocation,
           status: billStatus,
           paidAmount: paidAmt,
+          billDate: billDate || getToday(),
         }),
         headers: {
           Authorization: `Bearer ${token}`,
@@ -470,6 +474,7 @@ export default function BillsPage() {
         setBillItems([])
         setBillStatus('paid')
         setBillPaidAmount('0')
+        setBillDate(getToday())
         // Refresh all data to show updated stock
         await fetchData()
         showToast('Bill created successfully! Stock has been updated.', 'success')
@@ -530,6 +535,7 @@ export default function BillsPage() {
                 setBillItems([])
                 setBillStatus('paid')
                 setBillPaidAmount('0')
+                setBillDate(getToday())
                 setUserSearchQuery('')
                 setUserTypeFilterForSelect('all')
                 setIsUserDropdownOpen(false)
@@ -712,36 +718,33 @@ export default function BillsPage() {
                     Select User *
                   </label>
                   
-                  {/* User Type Filter */}
-                  <div className="mb-2">
+                  {/* User Type + Search in one line */}
+                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mb-2">
                     <select
                       value={userTypeFilterForSelect}
                       onChange={(e) => {
                         setUserTypeFilterForSelect(e.target.value)
                         setIsUserDropdownOpen(true)
                       }}
-                      className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white text-sm"
+                      className="w-full sm:w-auto sm:min-w-[8rem] px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white text-sm shrink-0"
                     >
                       <option value="all">All Types</option>
                       <option value="BMC">BMC</option>
                       <option value="Dabhadi">Dabhadi</option>
                       <option value="Customer">Customer</option>
                     </select>
-                  </div>
-
-                  {/* Searchable User Dropdown */}
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="Search by name or mobile number..."
-                      value={userSearchQuery}
-                      onChange={(e) => {
-                        setUserSearchQuery(e.target.value)
-                        setIsUserDropdownOpen(true)
-                      }}
-                      onFocus={() => setIsUserDropdownOpen(true)}
-                      className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white placeholder-slate-400"
-                    />
+                    <div className="relative flex-1 min-w-0">
+                      <input
+                        type="text"
+                        placeholder="Search by name or mobile number..."
+                        value={userSearchQuery}
+                        onChange={(e) => {
+                          setUserSearchQuery(e.target.value)
+                          setIsUserDropdownOpen(true)
+                        }}
+                        onFocus={() => setIsUserDropdownOpen(true)}
+                        className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white placeholder-slate-400"
+                      />
                     
                     {/* Selected User Display */}
                     {selectedUserId && !isUserDropdownOpen && (
@@ -839,6 +842,17 @@ export default function BillsPage() {
                         })()}
                       </div>
                     )}
+                  </div>
+                    <div className="shrink-0 w-full sm:w-auto">
+                      <label className="block text-sm font-medium text-slate-300 mb-1 sm:mb-0 sm:sr-only">Bill Date</label>
+                      <input
+                        type="date"
+                        value={billDate}
+                        onChange={(e) => setBillDate(e.target.value)}
+                        title="Bill date (default today)"
+                        className="w-full sm:w-[10.5rem] px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white text-sm"
+                      />
+                    </div>
                   </div>
 
                   {/* Click outside to close dropdown */}
@@ -1225,6 +1239,7 @@ export default function BillsPage() {
             setIsQuickBillOpen(false)
             setQuickBillCustomer({ name: '', mobileNo: '', address: '' })
             setBillItems([])
+            setQuickBillDate(getToday())
           }}
           title="⚡ Quick Bill - Direct Sale"
         >
@@ -1272,6 +1287,19 @@ export default function BillsPage() {
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white placeholder-slate-400"
                 placeholder="Enter address (optional)"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-1">
+                Bill Date
+              </label>
+              <input
+                type="date"
+                value={quickBillDate}
+                onChange={(e) => setQuickBillDate(e.target.value)}
+                className="w-full sm:max-w-[12rem] px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white"
+              />
+              <p className="mt-1 text-xs text-slate-400">Default is today. Change if adding a bill for another day.</p>
             </div>
 
             <div>
@@ -1530,13 +1558,18 @@ export default function BillsPage() {
 
                     // Then create bill
                     const paidAmt = parseFloat(quickBillPaidAmount) || 0
+                    const itemsWithLocation = billItems.map(item => ({
+                      ...item,
+                      storageLocation: item.storageLocation || 'godown',
+                    }))
                     const billRes = await apiRequest('/api/bills', {
                       method: 'POST',
                       body: JSON.stringify({
                         userId: userData.user.id,
-                        items: billItems,
+                        items: itemsWithLocation,
                         status: quickBillStatus,
                         paidAmount: paidAmt,
+                        billDate: quickBillDate || getToday(),
                       }),
                       headers: {
                         Authorization: `Bearer ${token}`,
@@ -1549,6 +1582,7 @@ export default function BillsPage() {
                       setBillItems([])
                       setQuickBillStatus('pending')
                       setQuickBillPaidAmount('0')
+                      setQuickBillDate(getToday())
                       // Refresh all data to show updated stock
                       await fetchData()
                       showToast('Quick bill created successfully! Stock has been updated.', 'success')

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Layout from '@/components/Layout'
 import Modal from '@/components/Modal'
+import ConfirmModal from '@/components/ConfirmModal'
 import { apiRequest } from '@/lib/api'
 import { showToast } from '@/components/Toast'
 
@@ -49,6 +50,8 @@ export default function UserProfilePage() {
   const [selectedBill, setSelectedBill] = useState<string | null>(null)
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paymentDescription, setPaymentDescription] = useState('')
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -99,7 +102,7 @@ export default function UserProfilePage() {
         setSelectedBill(null)
         setPaymentAmount('')
         setPaymentDescription('')
-        fetchUser()
+        await fetchUser()
         showToast('Payment recorded successfully!', 'success')
       } else {
         const error = await response.json()
@@ -108,6 +111,35 @@ export default function UserProfilePage() {
     } catch (error) {
       console.error('Error processing payment:', error)
       showToast('An error occurred', 'error')
+    }
+  }
+
+  const handleDeleteUserClick = () => {
+    setDeleteConfirmOpen(true)
+  }
+
+  const handleDeleteUserConfirm = async () => {
+    if (isDeleting || !user) return
+    setIsDeleting(true)
+    try {
+      const token = localStorage.getItem('token')
+      const response = await apiRequest(`/api/users/${user.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setDeleteConfirmOpen(false)
+        showToast('User deleted successfully.', 'success')
+        router.push('/users')
+      } else {
+        const data = await response.json()
+        showToast(data.error || 'Failed to delete user', 'error')
+      }
+    } catch (error: any) {
+      console.error('Error deleting user:', error)
+      showToast(error?.message || 'Failed to delete user', 'error')
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -145,12 +177,21 @@ export default function UserProfilePage() {
             <h1 className="text-xl sm:text-2xl font-bold text-white">{user.name}</h1>
             <p className="text-slate-400">{user.mobileNo}</p>
           </div>
-          <button
-            onClick={() => router.back()}
-            className="px-3 sm:px-4 py-2 border border-slate-600 rounded-lg text-slate-300 hover:bg-slate-700 text-sm sm:text-base"
-          >
-            ← Back
-          </button>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              onClick={() => router.back()}
+              className="flex-1 sm:flex-none px-3 sm:px-4 py-2 border border-slate-600 rounded-lg text-slate-300 hover:bg-slate-700 text-sm sm:text-base"
+            >
+              ← Back
+            </button>
+            <button
+              onClick={handleDeleteUserClick}
+              disabled={isDeleting}
+              className="px-3 sm:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete User'}
+            </button>
+          </div>
         </div>
 
         {/* User Info */}
@@ -344,6 +385,18 @@ export default function UserProfilePage() {
             </div>
           </div>
         </Modal>
+
+        <ConfirmModal
+          isOpen={deleteConfirmOpen}
+          onClose={() => setDeleteConfirmOpen(false)}
+          onConfirm={handleDeleteUserConfirm}
+          title="Delete User"
+          message={`Delete "${user?.name}"? This will also delete all their bills and cannot be undone.`}
+          confirmLabel="Yes, delete"
+          cancelLabel="No"
+          variant="danger"
+          isLoading={isDeleting}
+        />
       </div>
     </Layout>
   )

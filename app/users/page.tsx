@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
 import Modal from '@/components/Modal'
+import ConfirmModal from '@/components/ConfirmModal'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { userSchema, type UserInput } from '@/lib/validation'
@@ -43,6 +44,10 @@ export default function UsersPage() {
   const [userTypeFilter, setUserTypeFilter] = useState<string>('all') // 'all', 'BMC', 'Dabhadi', 'Customer'
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [userToDelete, setUserToDelete] = useState<User | null>(null)
 
   const {
     register,
@@ -209,6 +214,8 @@ export default function UsersPage() {
   }
 
   const onSubmit = async (data: UserInput) => {
+    if (isSubmitting) return
+    setIsSubmitting(true)
     try {
       const token = localStorage.getItem('token')
       const isEditing = !!editingUser
@@ -227,7 +234,7 @@ export default function UsersPage() {
         setIsModalOpen(false)
         reset()
         setEditingUser(null)
-        fetchUsers()
+        await fetchUsers()
         showToast(isEditing ? 'User updated successfully!' : 'User created successfully!', 'success')
       } else {
         const error = await response.json()
@@ -236,6 +243,8 @@ export default function UsersPage() {
     } catch (error) {
       console.error('Error saving user:', error)
       showToast('An error occurred', 'error')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -253,30 +262,36 @@ export default function UsersPage() {
     setIsModalOpen(true)
   }
 
-  // Delete function commented out
-  /*
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this user?')) return
+  const handleDeleteClick = (user: User) => {
+    setUserToDelete(user)
+    setDeleteConfirmOpen(true)
+  }
 
+  const handleDeleteConfirm = async () => {
+    if (!userToDelete || deletingId) return
+    setDeletingId(userToDelete.id)
     try {
       const token = localStorage.getItem('token')
-      const response = await apiRequest(`/api/users/${id}`, {
+      const response = await apiRequest(`/api/users/${userToDelete.id}`, {
         method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       })
-
       if (response.ok) {
-        fetchUsers()
+        setDeleteConfirmOpen(false)
+        setUserToDelete(null)
+        await fetchUsers()
+        showToast('User deleted successfully.', 'success')
       } else {
-        showToast('Failed to delete user', 'error')
+        const data = await response.json()
+        showToast(data.error || 'Failed to delete user', 'error')
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting user:', error)
+      showToast(error?.message || 'Failed to delete user', 'error')
+    } finally {
+      setDeletingId(null)
     }
   }
-  */
 
   const handleViewProfile = (userId: string) => {
     router.push(`/users/${userId}`)
@@ -353,12 +368,6 @@ export default function UsersPage() {
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">
                     Mobile
                   </th>
-                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase hidden sm:table-cell">
-                    Address
-                  </th>
-                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">
-                    Type
-                  </th>
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">
                     Status
                   </th>
@@ -373,7 +382,7 @@ export default function UsersPage() {
               <tbody className="bg-slate-800 divide-y divide-slate-700">
                 {paginatedUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
+                    <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
                       {searchQuery || userTypeFilter !== 'all' ? 'No users found matching your filters' : 'No users found'}
                     </td>
                   </tr>
@@ -390,18 +399,6 @@ export default function UsersPage() {
                         </td>
                         <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm text-slate-300">
                           {user.mobileNo}
-                        </td>
-                        <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm text-slate-400 hidden sm:table-cell">
-                          {user.address || '-'}
-                        </td>
-                        <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            user.userType === 'BMC' 
-                              ? 'bg-blue-600 text-white' 
-                              : 'bg-purple-600 text-white'
-                          }`}>
-                            {user.userType || 'BMC'}
-                          </span>
                         </td>
                         <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm">
                           <button
@@ -453,44 +450,44 @@ export default function UsersPage() {
                             ₹{totalPending.toFixed(2)}
                           </span>
                         </td>
-                        <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-right text-sm font-medium space-x-1 sm:space-x-2">
-                          <button
-                            onClick={() => handleViewProfile(user.id)}
-                            className="p-1.5 sm:px-2 sm:py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
-                            title="View"
-                          >
-                            <ViewIcon />
-                          </button>
-                          <button
-                            onClick={() => handleEdit(user)}
-                            className="p-1.5 sm:px-2 sm:py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-                            title="Edit"
-                          >
-                            <EditIcon />
-                          </button>
-                          {totalPending > 0 && (
+                        <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-right text-sm font-medium">
+                          <div className="flex items-center justify-end gap-1 sm:gap-2 flex-nowrap">
                             <button
-                              onClick={() => {
-                                setSelectedUser(user)
-                                setPaymentAmount(totalPending.toFixed(2))
-                                setPaymentModalOpen(true)
-                              }}
-                              className="p-1.5 sm:px-2 sm:py-1 bg-green-600 text-white rounded hover:bg-green-700"
-                              title="Pay Pending"
+                              onClick={() => handleViewProfile(user.id)}
+                              className="p-1.5 sm:px-2 sm:py-1 bg-blue-600 text-white rounded hover:bg-blue-700 shrink-0"
+                              title="View"
                             >
-                              <PaymentIcon />
+                              <ViewIcon />
                             </button>
-                          )}
-                          {/* Delete button commented out */}
-                          {/*
-                          <button
-                            onClick={() => handleDelete(user.id)}
-                            className="p-1.5 sm:px-2 sm:py-1 bg-red-600 text-white rounded hover:bg-red-700"
-                            title="Delete"
-                          >
-                            <DeleteIcon />
-                          </button>
-                          */}
+                            <button
+                              onClick={() => handleEdit(user)}
+                              className="p-1.5 sm:px-2 sm:py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 shrink-0"
+                              title="Edit"
+                            >
+                              <EditIcon />
+                            </button>
+                            {totalPending > 0 && (
+                              <button
+                                onClick={() => {
+                                  setSelectedUser(user)
+                                  setPaymentAmount(totalPending.toFixed(2))
+                                  setPaymentModalOpen(true)
+                                }}
+                                className="p-1.5 sm:px-2 sm:py-1 bg-green-600 text-white rounded hover:bg-green-700 shrink-0"
+                                title="Pay Pending"
+                              >
+                                <PaymentIcon />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteClick(user)}
+                              disabled={deletingId === user.id}
+                              className="p-1.5 sm:px-2 sm:py-1 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                              title="Delete"
+                            >
+                              <DeleteIcon />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )
@@ -628,13 +625,31 @@ export default function UsersPage() {
               </button>
               <button
                 type="submit"
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                disabled={isSubmitting}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
+                {isSubmitting && <LoadingSpinner />}
                 {editingUser ? 'Update' : 'Create'}
               </button>
             </div>
           </form>
         </Modal>
+
+        {/* Delete User Confirmation */}
+        <ConfirmModal
+          isOpen={deleteConfirmOpen}
+          onClose={() => {
+            setDeleteConfirmOpen(false)
+            setUserToDelete(null)
+          }}
+          onConfirm={handleDeleteConfirm}
+          title="Delete User"
+          message="This will delete the user and all their bills. This cannot be undone."
+          confirmLabel="Yes, delete"
+          cancelLabel="No"
+          variant="danger"
+          isLoading={!!deletingId}
+        />
 
         {/* Payment Modal */}
         <Modal

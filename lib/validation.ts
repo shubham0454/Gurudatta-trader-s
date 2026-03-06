@@ -43,6 +43,8 @@ export const billSchema = z.object({
   items: z.array(billItemSchema).min(1, 'At least one item is required'),
   status: z.enum(['pending', 'partial', 'paid']).optional(),
   paidAmount: z.number().nonnegative('Paid amount must be non-negative').optional(),
+  /** Bill date in YYYY-MM-DD format. Defaults to today if not provided. */
+  billDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD').optional(),
 })
 
 export const paymentSchema = z.object({

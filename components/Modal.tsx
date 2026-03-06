@@ -15,18 +15,26 @@ export default function Modal({ isOpen, onClose, title, children, size = 'defaul
   const maxWidthClass = size === 'wide' ? 'sm:max-w-2xl lg:max-w-4xl' : 'sm:max-w-lg'
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex items-center justify-center min-h-screen px-3 sm:px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={onClose} aria-hidden="true" />
-
-        <div className={`inline-block align-bottom bg-slate-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:w-full ${maxWidthClass} border border-slate-700 max-h-[90vh] flex flex-col`}>
+    <div className="fixed inset-0 z-[100] overflow-y-auto" aria-modal="true" role="dialog">
+      {/* Backdrop with blur */}
+      <div
+        className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm transition-opacity"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      {/* Centered container - same as ConfirmModal for consistent centering */}
+      <div className="flex min-h-full items-center justify-center p-3 sm:p-4">
+        <div
+          className={`relative z-10 w-full ${maxWidthClass} max-h-[90vh] sm:max-h-[85vh] flex flex-col rounded-lg bg-slate-800 text-left shadow-xl border border-slate-700 overflow-hidden`}
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="bg-slate-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4 flex-shrink-0">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-base sm:text-lg font-medium text-white truncate pr-2">{title}</h3>
               <button
                 type="button"
                 onClick={onClose}
-                className="text-slate-400 hover:text-slate-200 p-1 min-w-[2.5rem] min-h-[2.5rem] flex items-center justify-center rounded"
+                className="text-slate-400 hover:text-slate-200 p-1 min-w-[2.5rem] min-h-[2.5rem] flex items-center justify-center rounded shrink-0"
                 aria-label="Close"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

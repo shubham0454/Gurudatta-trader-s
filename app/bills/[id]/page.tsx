@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Layout from '@/components/Layout'
 import Modal from '@/components/Modal'
+import ConfirmModal from '@/components/ConfirmModal'
 import { apiRequest } from '@/lib/api'
 import { showToast } from '@/components/Toast'
 
@@ -47,6 +48,7 @@ export default function BillDetailPage() {
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paymentDescription, setPaymentDescription] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -389,6 +391,37 @@ export default function BillDetailPage() {
     } catch (error) {
       console.error('Error generating PDF:', error)
       showToast('Failed to generate PDF', 'error')
+    }
+  }
+
+  const handleDeleteBillClick = () => setDeleteConfirmOpen(true)
+
+  const handleDeleteBillConfirm = async () => {
+    if (isDeleting) return
+    setIsDeleting(true)
+    try {
+      const token = localStorage.getItem('token')
+      const response = await apiRequest(`/api/bills/${params.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setDeleteConfirmOpen(false)
+        showToast('Bill deleted successfully. Stock has been restored.', 'success')
+        router.push('/bills')
+      } else {
+        const error = await response.json()
+        showToast(error.error || 'Failed to delete bill', 'error')
+      }
+    } catch (error: any) {
+      console.error('Error deleting bill:', error)
+      if (error.name === 'NetworkError' || error.message?.includes('Network Error')) {
+        showToast('Network Error: No internet connection. Please check your connection and try again.', 'error')
+      } else {
+        showToast('An error occurred while deleting the bill. Please try again.', 'error')
+      }
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -782,37 +815,7 @@ export default function BillDetailPage() {
               📄 Download PDF
             </button> */}
             <button
-              onClick={async () => {
-                if (!confirm('Are you sure you want to delete this bill? Stock will be restored.')) {
-                  return
-                }
-                setIsDeleting(true)
-                try {
-                  const token = localStorage.getItem('token')
-                  const response = await apiRequest(`/api/bills/${params.id}`, {
-                    method: 'DELETE',
-                    headers: {
-                      Authorization: `Bearer ${token}`,
-                    },
-                  })
-                  if (response.ok) {
-                    showToast('Bill deleted successfully. Stock has been restored.', 'success')
-                    router.push('/bills')
-                  } else {
-                    const error = await response.json()
-                    showToast(error.error || 'Failed to delete bill', 'error')
-                  }
-                } catch (error: any) {
-                  console.error('Error deleting bill:', error)
-                  if (error.name === 'NetworkError' || error.message?.includes('Network Error')) {
-                    showToast('Network Error: No internet connection. Please check your connection and try again.', 'error')
-                  } else {
-                    showToast('An error occurred while deleting the bill. Please try again.', 'error')
-                  }
-                } finally {
-                  setIsDeleting(false)
-                }
-              }}
+              onClick={handleDeleteBillClick}
               disabled={isDeleting}
               className="px-3 sm:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
             >
@@ -1041,6 +1044,18 @@ export default function BillDetailPage() {
             </div>
           </div>
         </Modal>
+
+        <ConfirmModal
+          isOpen={deleteConfirmOpen}
+          onClose={() => setDeleteConfirmOpen(false)}
+          onConfirm={handleDeleteBillConfirm}
+          title="Delete Bill"
+          message="Are you sure you want to delete this bill? Stock will be restored."
+          confirmLabel="Yes, delete"
+          cancelLabel="No"
+          variant="danger"
+          isLoading={isDeleting}
+        />
       </div>
     </Layout>
     </>

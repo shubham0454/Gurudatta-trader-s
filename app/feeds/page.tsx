@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
 import Modal from '@/components/Modal'
+import ConfirmModal from '@/components/ConfirmModal'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { feedSchema, type FeedInput } from '@/lib/validation'
@@ -34,6 +35,7 @@ export default function FeedsPage() {
   const [editingFeed, setEditingFeed] = useState<Feed | null>(null)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [feedToDelete, setFeedToDelete] = useState<Feed | null>(null)
+  const [isDeletingFeed, setIsDeletingFeed] = useState(false)
   const [newFeedLocation, setNewFeedLocation] = useState<'shop' | 'godown'>('godown') // Location for new feed stock
   const [editFeedLocation, setEditFeedLocation] = useState<'shop' | 'godown'>('godown') // When editing: stock in one place only
   const [searchQuery, setSearchQuery] = useState('')
@@ -215,10 +217,10 @@ export default function FeedsPage() {
     setDeleteConfirmOpen(true)
   }
 
-  const handleDeleteConfirm = async (feed?: Feed) => {
-    const feedToDeleteId = feed?.id || feedToDelete?.id || editingFeed?.id
-    if (!feedToDeleteId) return
-
+  const handleDeleteConfirm = async () => {
+    const feedToDeleteId = feedToDelete?.id || editingFeed?.id
+    if (!feedToDeleteId || isDeletingFeed) return
+    setIsDeletingFeed(true)
     try {
       const token = localStorage.getItem('token')
       const response = await apiRequest(`/api/feeds/${feedToDeleteId}`, {
@@ -247,6 +249,8 @@ export default function FeedsPage() {
       showToast('An error occurred while deleting the feed', 'error')
       setDeleteConfirmOpen(false)
       setFeedToDelete(null)
+    } finally {
+      setIsDeletingFeed(false)
     }
   }
 
@@ -689,9 +693,8 @@ export default function FeedsPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (confirm('Are you sure you want to delete this feed? It will be hidden from the list but not permanently deleted.')) {
-                      handleDeleteConfirm(editingFeed)
-                    }
+                    setFeedToDelete(editingFeed)
+                    setDeleteConfirmOpen(true)
                   }}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
                 >
@@ -724,61 +727,17 @@ export default function FeedsPage() {
         </Modal>
 
 
-        {/* Delete Confirmation Modal */}
-        <Modal
+        <ConfirmModal
           isOpen={deleteConfirmOpen}
           onClose={handleDeleteCancel}
+          onConfirm={handleDeleteConfirm}
           title="Delete Feed"
-        >
-          <div className="space-y-4">
-            <div className="bg-red-900/30 border border-red-700 rounded-lg p-3">
-              <p className="text-sm text-red-300">
-                ⚠️ <strong>Warning:</strong> This action cannot be undone.
-              </p>
-            </div>
-            
-            <div>
-              <p className="text-sm text-slate-300 mb-2">
-                Are you sure you want to delete this feed?
-              </p>
-              {feedToDelete && (
-                <div className="bg-slate-700 rounded-lg p-3 space-y-1">
-                  <p className="text-sm font-medium text-white">
-                    <span className="text-slate-400">Name:</span> {feedToDelete.name}
-                  </p>
-                  {feedToDelete.brand && (
-                    <p className="text-sm text-slate-300">
-                      <span className="text-slate-400">Brand:</span> {feedToDelete.brand}
-                    </p>
-                  )}
-                  <p className="text-sm text-slate-300">
-                    <span className="text-slate-400">Weight:</span> {feedToDelete.weight} kg
-                  </p>
-                  <p className="text-sm text-slate-300">
-                    <span className="text-slate-400">Stock:</span> {feedToDelete.stock.toFixed(0)}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end space-x-3 pt-4">
-              <button
-                type="button"
-                onClick={handleDeleteCancel}
-                className="px-4 py-2 border border-slate-600 rounded-lg text-slate-300 hover:bg-slate-700"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDeleteConfirm()}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-              >
-                Delete Feed
-              </button>
-            </div>
-          </div>
-        </Modal>
+          message="Are you sure you want to delete this feed? It will be hidden from the list but not permanently deleted."
+          confirmLabel="Yes, delete"
+          cancelLabel="No"
+          variant="danger"
+          isLoading={isDeletingFeed}
+        />
 
         {/* Pagination */}
         {totalPages > 1 && (
