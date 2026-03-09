@@ -47,6 +47,7 @@ interface Bill {
     quantity: number
     unitPrice: number
     totalPrice: number
+    storageLocation?: string
   }>
 }
 
@@ -594,10 +595,9 @@ export default function BillsPage() {
                 <tr>
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">Bill #</th>
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">User</th>
-                  {/* <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">Type</th> */}
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase hidden sm:table-cell">Date</th>
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">Quantity</th>
-                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">Total</th>
+                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">Stock Location</th>
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-200 uppercase">Pending</th>
                   <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-3 text-right text-xs font-medium text-slate-200 uppercase">Actions</th>
                 </tr>
@@ -632,7 +632,12 @@ export default function BillsPage() {
                       <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm text-white font-medium">
                         {bill.items.reduce((sum, item) => sum + item.quantity, 0).toFixed(0)}
                       </td>
-                      <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm text-white">₹{bill.totalAmount.toFixed(2)}</td>
+                      <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm text-slate-300">
+                        {(() => {
+                          const locs = [...new Set((bill.items || []).map((i: { storageLocation?: string }) => (i.storageLocation || 'godown').toLowerCase()))]
+                          return locs.map(l => l === 'godown' ? 'Godown' : l === 'shop' ? 'Shop' : l).join(', ') || 'Godown'
+                        })()}
+                      </td>
                       <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-sm text-amber-400">₹{bill.pendingAmount.toFixed(2)}</td>
                       <td className="px-2 sm:px-4 lg:px-6 py-3 sm:py-4 text-right text-sm">
                         <button
