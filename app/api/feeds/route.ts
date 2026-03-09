@@ -30,6 +30,11 @@ export async function GET(request: NextRequest) {
       }),
       prisma.billItem.groupBy({
         by: ['feedId'],
+        where: {
+          bill: {
+            billStatus: { not: 'inactive' },
+          },
+        },
         _sum: { quantity: true },
       }),
     ])
