@@ -39,41 +39,52 @@ export async function GET(request: NextRequest) {
       chartDataResult,
       feedSalesResult
     ] = await Promise.all([
-      // Today's sales - use aggregate
+      // Today's sales - exclude soft-deleted bills only
       prisma.bill.aggregate({
         where: {
           createdAt: { gte: startOfToday },
+          billStatus: { not: 'inactive' },
         },
         _sum: { totalAmount: true },
       }),
-      // Month sales - use aggregate
+      // Month sales
       prisma.bill.aggregate({
         where: {
           createdAt: { gte: startOfMonth },
+          billStatus: { not: 'inactive' },
         },
         _sum: { totalAmount: true },
       }),
-      // Pending amount - use aggregate
+      // Pending amount
       prisma.bill.aggregate({
         where: {
           status: { in: ['pending', 'partial'] },
+          billStatus: { not: 'inactive' },
         },
         _sum: { pendingAmount: true },
       }),
       // Total users
       prisma.user.count(),
-      // Total feeds
-      prisma.feed.count(),
-      // Total stock - use aggregate
-      prisma.feed.aggregate({
-        _sum: { stock: true },
+      // Total feeds - exclude soft-deleted only
+      prisma.feed.count({
+        where: {
+          status: { not: 'inactive' },
+        },
       }),
-      // Creditors - optimized query
+      // Total stock - exclude soft-deleted feeds only
+      prisma.feed.aggregate({
+        where: {
+          status: { not: 'inactive' },
+        },
+        _sum: { stock: true, shopStock: true, godownStock: true },
+      }),
+      // Creditors - exclude deleted bills only
       prisma.user.findMany({
         where: {
           bills: {
             some: {
               status: { in: ['pending', 'partial'] },
+              billStatus: { not: 'inactive' },
             },
           },
         },
@@ -84,6 +95,7 @@ export async function GET(request: NextRequest) {
           bills: {
             where: {
               status: { in: ['pending', 'partial'] },
+              billStatus: { not: 'inactive' },
             },
             select: {
               pendingAmount: true,
@@ -91,22 +103,21 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      // Debtors count
+      // Debtors count - users whose every (active) bill is paid; ignore inactive bills
       prisma.user.count({
         where: {
           bills: {
             every: {
-              status: 'paid',
+              OR: [{ billStatus: 'inactive' }, { status: 'paid' }],
             },
           },
         },
       }),
-      // Chart data - based on period
+      // Chart data - exclude deleted bills only
       prisma.bill.findMany({
         where: {
-          createdAt: {
-            gte: startDate,
-          },
+          createdAt: { gte: startDate },
+          billStatus: { not: 'inactive' },
         },
         select: {
           createdAt: true,
@@ -116,13 +127,12 @@ export async function GET(request: NextRequest) {
           createdAt: 'asc',
         },
       }),
-      // Feed sales data for pie chart
+      // Feed sales data for pie chart - exclude deleted bills only
       prisma.billItem.findMany({
         where: {
           bill: {
-            createdAt: {
-              gte: startDate,
-            },
+            createdAt: { gte: startDate },
+            billStatus: { not: 'inactive' },
           },
         },
         select: {
@@ -143,7 +153,11 @@ export async function GET(request: NextRequest) {
     const todaySales = todaySalesResult._sum.totalAmount || 0
     const monthSales = monthSalesResult._sum.totalAmount || 0
     const pendingAmount = pendingResult._sum.pendingAmount || 0
-    const totalStock = totalStockResult._sum.stock || 0
+    // Sum stock from active feeds only. Use shop+godown when present, else legacy stock (avoid double-count).
+    const stockSum = totalStockResult._sum.stock || 0
+    const shopSum = totalStockResult._sum.shopStock || 0
+    const godownSum = totalStockResult._sum.godownStock || 0
+    const totalStock = shopSum + godownSum > 0 ? shopSum + godownSum : stockSum
 
     const creditorsData = creditors.map(user => ({
       id: user.id,

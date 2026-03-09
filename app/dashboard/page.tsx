@@ -131,40 +131,41 @@ export default function DashboardPage() {
     )
   }
 
+  const n = (v: number | undefined | null) => Number(v) || 0
   const statCards = [
     {
       title: "Today's Sales",
-      value: `₹${stats.todaySales.toFixed(2)}`,
+      value: `₹${n(stats.todaySales).toFixed(2)}`,
       color: 'bg-blue-500',
       icon: '💰',
     },
     {
       title: 'This Month Sales',
-      value: `₹${stats.monthSales.toFixed(2)}`,
+      value: `₹${n(stats.monthSales).toFixed(2)}`,
       color: 'bg-green-500',
       icon: '📊',
     },
     {
       title: 'Pending Amount',
-      value: `₹${stats.pendingAmount.toFixed(2)}`,
+      value: `₹${n(stats.pendingAmount).toFixed(2)}`,
       color: 'bg-amber-500',
       icon: '⏳',
     },
     {
       title: 'Total Users',
-      value: stats.totalUsers.toString(),
+      value: String(n(stats.totalUsers)),
       color: 'bg-purple-500',
       icon: '👥',
     },
     {
       title: 'Total Feed Types',
-      value: stats.totalFeeds.toString(),
+      value: String(n(stats.totalFeeds)),
       color: 'bg-indigo-500',
       icon: '🌾',
     },
     {
       title: 'Total Stock of Feed',
-      value: stats.totalStock.toFixed(0),
+      value: n(stats.totalStock).toFixed(0),
       color: 'bg-teal-500',
       icon: '📦',
     },
@@ -244,7 +245,7 @@ export default function DashboardPage() {
               </div>
             ) : (
               <ResponsiveContainer width="100%" height={250}>
-                <LineChart data={stats.chartData}>
+                <LineChart data={stats.chartData ?? []}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
                   <XAxis dataKey="date" stroke="#94a3b8" />
                   <YAxis stroke="#94a3b8" />
@@ -303,12 +304,12 @@ export default function DashboardPage() {
                   <span className="text-sm">Updating chart...</span>
                 </div>
               </div>
-            ) : stats.feedSalesData && stats.feedSalesData.length > 0 ? (
+            ) : (stats.feedSalesData ?? []).length > 0 ? (
               <>
                 <ResponsiveContainer width="100%" height={250}>
                   <PieChart>
                     <Pie
-                      data={stats.feedSalesData}
+                      data={stats.feedSalesData ?? []}
                       cx="50%"
                       cy="50%"
                       labelLine={false}
@@ -317,21 +318,21 @@ export default function DashboardPage() {
                       fill="#8884d8"
                       dataKey="value"
                     >
-                      {stats.feedSalesData.map((entry, index) => (
+                      {(stats.feedSalesData ?? []).map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
                     <Tooltip
                       contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', color: '#f1f5f9' }}
                       formatter={(value: number, name: string, props: any) => [
-                        `${value} units (₹${props.payload.totalPrice.toFixed(2)})`,
-                        props.payload.name,
+                        `${value} units (₹${(Number(props?.payload?.totalPrice) || 0).toFixed(2)})`,
+                        props?.payload?.name ?? '',
                       ]}
                     />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="mt-4 space-y-1 max-h-32 overflow-y-auto">
-                  {stats.feedSalesData.slice(0, 5).map((feed, index) => (
+                  {(stats.feedSalesData ?? []).slice(0, 5).map((feed, index) => (
                     <div key={index} className="flex items-center justify-between text-xs sm:text-sm">
                       <div className="flex items-center gap-2">
                         <div
@@ -369,7 +370,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Creditors */}
-        {stats.creditors.length > 0 && (
+        {(stats.creditors ?? []).length > 0 && (
           <div className="bg-slate-800 rounded-lg shadow-lg p-4 sm:p-6 border border-slate-700">
             <h3 className="text-base sm:text-lg font-semibold text-white mb-4">Creditors (Pending Payments)</h3>
             <div className="overflow-x-auto">
@@ -382,12 +383,12 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {stats.creditors.map((creditor) => (
+                  {(stats.creditors ?? []).map((creditor) => (
                     <tr key={creditor.id} className="border-b border-slate-700">
                       <td className="py-2 px-2 sm:px-4 text-sm text-white">{creditor.name}</td>
                       <td className="py-2 px-2 sm:px-4 text-sm text-slate-400">{creditor.mobileNo}</td>
                       <td className="py-2 px-2 sm:px-4 text-right text-sm text-amber-400 font-semibold">
-                        ₹{creditor.totalPending.toFixed(2)}
+                        ₹{(Number(creditor.totalPending) || 0).toFixed(2)}
                       </td>
                     </tr>
                   ))}

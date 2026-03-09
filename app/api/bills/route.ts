@@ -12,13 +12,8 @@ export async function GET(request: NextRequest) {
     const includeInactive = searchParams.get('includeInactive') === 'true' // For backend/admin use
 
     const where: any = userId ? { userId } : {}
-    
-    // Filter by billStatus - only show active bills unless explicitly requested
-    // Note: This field may not exist until migration is run, so we'll handle it gracefully
     if (!includeInactive) {
-      // Only add billStatus filter if the field exists (after migration)
-      // For now, we'll fetch all bills and filter in memory if needed
-      // This will work until migration is complete
+      where.billStatus = { not: 'inactive' } // include active, null, or missing (legacy)
     }
 
     try {
@@ -72,9 +67,10 @@ export async function GET(request: NextRequest) {
         errorMessage.includes('status')
 
       if (isFieldError) {
-        // Fetch without new fields (database not migrated yet)
+        // Fetch without new fields (database not migrated yet); no billStatus filter
+        const fallbackWhere = userId ? { userId } : {}
         const bills = await prisma.bill.findMany({
-          where,
+          where: fallbackWhere,
           select: {
             id: true,
             billNumber: true,
@@ -207,9 +203,8 @@ export async function POST(request: NextRequest) {
       where: {
         userId: validatedData.userId,
         totalAmount: totalAmount,
-        createdAt: {
-          gte: fiveSecondsAgo,
-        },
+        createdAt: { gte: fiveSecondsAgo },
+        billStatus: { not: 'inactive' },
       },
       include: {
         items: true,

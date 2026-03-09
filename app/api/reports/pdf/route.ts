@@ -46,19 +46,20 @@ export async function GET(request: NextRequest) {
       endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999) // Year end
     }
 
-    // Fetch all bills in date range first (without billStatus filter)
+    // Fetch bills in date range (exclude soft-deleted only)
     const where: any = {
       createdAt: {
         gte: startDate,
         lte: endDate,
       },
+      billStatus: { not: 'inactive' },
     }
 
     if (userId) {
       where.userId = userId
     }
 
-    // Fetch ALL bills without any limit
+    // Fetch active bills in range
     let bills = await prisma.bill.findMany({
       where,
       include: {

@@ -14,6 +14,9 @@ export async function GET(
       where: { id: params.id },
       include: {
         bills: {
+          where: {
+            billStatus: { not: 'inactive' },
+          },
           include: {
             items: {
               include: {

@@ -22,6 +22,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (bill.billStatus === 'inactive') {
+      return NextResponse.json(
+        { error: 'Cannot add payment to a deleted bill' },
+        { status: 400 }
+      )
+    }
+
     if (validatedData.amount > bill.pendingAmount) {
       return NextResponse.json(
         { error: 'Payment amount exceeds pending amount' },

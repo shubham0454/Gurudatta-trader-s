@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const includeInactive = searchParams.get('includeInactive') === 'true'
     
-    // Fetch feeds and sold stock in parallel for faster response (no heavy include)
+    // Fetch feeds; exclude soft-deleted (inactive) unless includeInactive
     const [feeds, soldByFeed] = await Promise.all([
       prisma.feed.findMany({
         orderBy: { name: 'asc' },
@@ -36,9 +36,11 @@ export async function GET(request: NextRequest) {
 
     const soldMap = new Map(soldByFeed.map((row) => [row.feedId, row._sum.quantity || 0]))
 
-    const feedsWithStats = feeds
-      .filter((feed: any) => includeInactive || feed.status == null || feed.status === 'active')
-      .map((feed) => {
+    const feedsFiltered = includeInactive
+      ? feeds
+      : feeds.filter((f: any) => f.status == null || f.status === 'active')
+
+    const feedsWithStats = feedsFiltered.map((feed: any) => {
         const soldStock = soldMap.get(feed.id) || 0
         return {
           id: feed.id,
@@ -76,7 +78,10 @@ export async function POST(request: NextRequest) {
     const validatedData = feedSchema.parse(body)
 
     const feed = await prisma.feed.create({
-      data: validatedData,
+      data: {
+        ...validatedData,
+        status: 'active', // ensure new feeds are active and show in list
+      },
     })
 
     return NextResponse.json({ feed }, { status: 201 })

@@ -30,6 +30,9 @@ export async function GET(request: NextRequest) {
           status: true,
           createdAt: true,
           bills: {
+            where: {
+              billStatus: { not: 'inactive' }, // include active, null, or missing (legacy)
+            },
             select: {
               pendingAmount: true,
             },
@@ -63,6 +66,9 @@ export async function GET(request: NextRequest) {
             email: true,
             createdAt: true,
             bills: {
+              where: {
+                billStatus: { not: 'inactive' },
+              },
               select: {
                 pendingAmount: true,
               },
